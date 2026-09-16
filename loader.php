@@ -1,14 +1,9 @@
 <?php
 /**
  * LearnPiano GitHub Loader / Updater
- *
- * Pulls the latest `main` branch snapshot from:
- *   https://github.com/efrgdgr0024345/learnpaino
- *
- * No GitHub token is required while the repository is public.
- * Requires PHP 8.1+, ZipArchive, and outbound HTTPS access.
+ * Pulls the latest main branch from efrgdgr0024345/learnpaino.
+ * PHP 8.1+, ZipArchive, outbound HTTPS required.
  */
-
 declare(strict_types=1);
 
 @set_time_limit(120);
@@ -33,205 +28,21 @@ function h(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
-function validateDownloadedFile(string $file): int {
-    clearstatcache(true, $file);
-    if (!is_file($file)) {
-        throw new RuntimeException('GitHub download did not create a file.');
-    }
-
-    $bytes = filesize($file);
-    if ($bytes === false || $bytes <= 0) {
-        @unlink($file);
-        throw new RuntimeException('GitHub returned an empty download (0 bytes). The repository ZIP was not opened.');
-    }
-
-    return $bytes;
-}
-
-function httpGet(string $url, ?string $dest = null): string|bool {
-    $headers = [
-        'User-Agent: LearnPiano-Loader/1.1',
-        $dest === null
-            ? 'Accept: application/vnd.github+json'
-            : 'Accept: application/zip, application/octet-stream, */*',
-        'Cache-Control: no-cache',
-    ];
-
-    // Never stream straight into the final destination. A failed/aborted request
-    // must not leave a zero-byte repo.zip that ZipArchive later attempts to open.
-    $downloadFile = null;
-    if ($dest !== null) {
-        $downloadFile = $dest . '.part-' . bin2hex(random_bytes(4));
-    }
-
-    try {
-        if (function_exists('curl_init')) {
-            $ch = curl_init($url);
-            if ($ch === false) {
-                throw new RuntimeException('Could not initialise cURL.');
-            }
-            curl_setopt_array($ch, [
-                CURLOPT_FOLLOWLOCATION => true,
-                CURLOPT_MAXREDIRS => 8,
-                CURLOPT_CONNECTTIMEOUT => 15,
-                CURLOPT_TIMEOUT => 90,
-                CURLOPT_HTTPHEADER => $headers,
-                CURLOPT_SSL_VERIFYPEER => true,
-                CURLOPT_SSL_VERIFYHOST => 2,
-                CURLOPT_ENCODING => '',
-            ]);
-
-            $fp = null;
-            if ($downloadFile !== null) {
-                $fp = fopen($downloadFile, 'wb');
-                if (!$fp) {
-                    curl_close($ch);
-                    throw new RuntimeException('Could not create temporary download file.');
-                }
-                curl_setopt($ch, CURLOPT_FILE, $fp);
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
-            } else {
-                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-            }
-
-            $result = curl_exec($ch);
-            $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-            $contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
-            $error = curl_error($ch);
-            curl_close($ch);
-            if (is_resource($fp)) fclose($fp);
-
-            if ($result === false || $status < 200 || $status >= 300) {
-                if ($downloadFile !== null) @unlink($downloadFile);
-                throw new RuntimeException("GitHub request failed (HTTP {$status})" . ($error ? ": {$error}" : '.'));
-            }
-
-            if ($downloadFile !== null) {
-                $bytes = validateDownloadedFile($downloadFile);
-                if (is_file($dest) && !@unlink($dest)) {
-                    @unlink($downloadFile);
-                    throw new RuntimeException('Could not replace the previous temporary repository ZIP.');
-                }
-                if (!@rename($downloadFile, $dest)) {
-                    @unlink($downloadFile);
-                    throw new RuntimeException('Could not activate the downloaded repository ZIP.');
-                }
-                out('GitHub download response: HTTP ' . $status . ', ' . number_format($bytes) . ' bytes' . ($contentType !== '' ? ', ' . $contentType : '') . '.');
-                return true;
-            }
-
-            $text = (string)$result;
-            if ($text === '') {
-                throw new RuntimeException('GitHub returned an empty API response.');
-            }
-            return $text;
-        }
-
-        if (!ini_get('allow_url_fopen')) {
-            throw new RuntimeException('Neither cURL nor allow_url_fopen is available for HTTPS downloads.');
-        }
-
-        $context = stream_context_create([
-            'http' => [
-                'method' => 'GET',
-                'timeout' => 90,
-                'header' => implode("\r\n", $headers),
-                'ignore_errors' => false,
-                'follow_location' => 1,
-                'max_redirects' => 8,
-            ],
-            'ssl' => [
-                'verify_peer' => true,
-                'verify_peer_name' => true,
-            ],
-        ]);
-
-        if ($downloadFile !== null) {
-            $in = @fopen($url, 'rb', false, $context);
-            if (!$in) throw new RuntimeException('Could not open GitHub download stream.');
-            $outHandle = @fopen($downloadFile, 'wb');
-            if (!$outHandle) {
-                fclose($in);
-                throw new RuntimeException('Could not create temporary download file.');
-            }
-
-            $copied = stream_copy_to_stream($in, $outHandle);
-            fclose($in);
-            fclose($outHandle);
-
-            if ($copied === false || $copied <= 0) {
-                @unlink($downloadFile);
-                throw new RuntimeException('GitHub download stream returned no data.');
-            }
-
-            $bytes = validateDownloadedFile($downloadFile);
-            if (is_file($dest) && !@unlink($dest)) {
-                @unlink($downloadFile);
-                throw new RuntimeException('Could not replace the previous temporary repository ZIP.');
-            }
-            if (!@rename($downloadFile, $dest)) {
-                @unlink($downloadFile);
-                throw new RuntimeException('Could not activate the downloaded repository ZIP.');
-            }
-            out('GitHub download response: ' . number_format($bytes) . ' bytes.');
-            return true;
-        }
-
-        $data = @file_get_contents($url, false, $context);
-        if ($data === false) throw new RuntimeException('Could not download from GitHub.');
-        if ($data === '') throw new RuntimeException('GitHub returned an empty API response.');
-        return $data;
-    } finally {
-        if ($downloadFile !== null && is_file($downloadFile)) {
-            @unlink($downloadFile);
-        }
-    }
-}
-
-function remoteCommit(): array {
-    $url = 'https://api.github.com/repos/' . GH_OWNER . '/' . GH_REPO . '/commits/' . rawurlencode(GH_BRANCH) . '?_=' . time();
-    $json = httpGet($url);
-    $data = json_decode((string)$json, true, 512, JSON_THROW_ON_ERROR);
-    if (empty($data['sha'])) throw new RuntimeException('GitHub did not return the current commit SHA.');
-    return [
-        'sha' => (string)$data['sha'],
-        'message' => (string)($data['commit']['message'] ?? ''),
-        'date' => (string)($data['commit']['committer']['date'] ?? ''),
-    ];
-}
-
-function readState(string $root): array {
-    $file = $root . DIRECTORY_SEPARATOR . STATE_FILE;
-    if (!is_file($file)) return [];
-    $data = json_decode((string)@file_get_contents($file), true);
-    return is_array($data) ? $data : [];
-}
-
-function saveState(string $root, array $state): void {
-    $json = json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-    if ($json === false || file_put_contents($root . DIRECTORY_SEPARATOR . STATE_FILE, $json, LOCK_EX) === false) {
-        throw new RuntimeException('Could not write deployment state file.');
-    }
-}
-
-function deleteTree(string $path): void {
-    if (!file_exists($path)) return;
-    if (is_link($path) || is_file($path)) { @unlink($path); return; }
-    $items = scandir($path);
-    if ($items !== false) {
-        foreach ($items as $item) {
-            if ($item === '.' || $item === '..') continue;
-            deleteTree($path . DIRECTORY_SEPARATOR . $item);
-        }
-    }
-    @rmdir($path);
-}
-
 function ensureDir(string $dir): void {
     if (is_dir($dir)) return;
     if (!mkdir($dir, 0755, true) && !is_dir($dir)) {
         throw new RuntimeException("Could not create directory: {$dir}");
     }
+}
+
+function deleteTree(string $path): void {
+    if (!file_exists($path)) return;
+    if (is_file($path) || is_link($path)) { @unlink($path); return; }
+    foreach (scandir($path) ?: [] as $item) {
+        if ($item === '.' || $item === '..') continue;
+        deleteTree($path . DIRECTORY_SEPARATOR . $item);
+    }
+    @rmdir($path);
 }
 
 function safeRelative(string $path): string {
@@ -254,6 +65,100 @@ function shouldPreserve(string $relative): bool {
         || str_starts_with($relative, '_loader_tmp/');
 }
 
+function httpGetMemory(string $url, string $accept = '*/*'): string {
+    $headers = [
+        'User-Agent: LearnPiano-Loader/1.2',
+        'Accept: ' . $accept,
+        'Cache-Control: no-cache',
+        'Pragma: no-cache',
+    ];
+
+    if (function_exists('curl_init')) {
+        $ch = curl_init($url);
+        if ($ch === false) throw new RuntimeException('Could not initialise cURL.');
+        curl_setopt_array($ch, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 8,
+            CURLOPT_CONNECTTIMEOUT => 15,
+            CURLOPT_TIMEOUT => 90,
+            CURLOPT_HTTPHEADER => $headers,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_ENCODING => '',
+            CURLOPT_HTTP_VERSION => CURL_HTTP_VERSION_1_1,
+        ]);
+        $body = curl_exec($ch);
+        $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+        $type = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+        $error = curl_error($ch);
+        curl_close($ch);
+
+        if ($body === false) {
+            throw new RuntimeException('GitHub download failed' . ($error ? ': ' . $error : '.'));
+        }
+        if ($status < 200 || $status >= 300) {
+            throw new RuntimeException("GitHub request failed (HTTP {$status}).");
+        }
+        if ($body === '') {
+            throw new RuntimeException("GitHub returned an empty response (HTTP {$status}" . ($type ? ", {$type}" : '') . ').');
+        }
+        out('GitHub response: HTTP ' . $status . ', ' . number_format(strlen($body)) . ' bytes' . ($type ? ', ' . $type : '') . '.');
+        return $body;
+    }
+
+    if (!ini_get('allow_url_fopen')) {
+        throw new RuntimeException('Neither cURL nor allow_url_fopen is available for HTTPS downloads.');
+    }
+
+    $context = stream_context_create([
+        'http' => [
+            'method' => 'GET',
+            'timeout' => 90,
+            'header' => implode("\r\n", $headers),
+            'ignore_errors' => false,
+            'follow_location' => 1,
+            'max_redirects' => 8,
+        ],
+        'ssl' => [
+            'verify_peer' => true,
+            'verify_peer_name' => true,
+        ],
+    ]);
+    $body = @file_get_contents($url, false, $context);
+    if ($body === false || $body === '') {
+        throw new RuntimeException('Could not download data from GitHub.');
+    }
+    out('GitHub response: ' . number_format(strlen($body)) . ' bytes.');
+    return $body;
+}
+
+function remoteCommit(): array {
+    $url = 'https://api.github.com/repos/' . GH_OWNER . '/' . GH_REPO . '/commits/' . rawurlencode(GH_BRANCH) . '?_=' . time();
+    $json = httpGetMemory($url, 'application/vnd.github+json');
+    $data = json_decode($json, true, 512, JSON_THROW_ON_ERROR);
+    if (empty($data['sha'])) throw new RuntimeException('GitHub did not return the current commit SHA.');
+    return [
+        'sha' => (string)$data['sha'],
+        'message' => (string)($data['commit']['message'] ?? ''),
+        'date' => (string)($data['commit']['committer']['date'] ?? ''),
+    ];
+}
+
+function readState(string $root): array {
+    $file = $root . DIRECTORY_SEPARATOR . STATE_FILE;
+    if (!is_file($file)) return [];
+    $data = json_decode((string)@file_get_contents($file), true);
+    return is_array($data) ? $data : [];
+}
+
+function saveState(string $root, array $state): void {
+    $json = json_encode($state, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+    if ($json === false || file_put_contents($root . DIRECTORY_SEPARATOR . STATE_FILE, $json, LOCK_EX) === false) {
+        throw new RuntimeException('Could not write deployment state file.');
+    }
+}
+
 function deployLatest(string $root, array $remote): array {
     if (!class_exists('ZipArchive')) {
         throw new RuntimeException('PHP ZipArchive is not enabled. Enable the PHP zip extension in cPanel first.');
@@ -270,30 +175,30 @@ function deployLatest(string $root, array $remote): array {
     try {
         $zipUrl = 'https://codeload.github.com/' . GH_OWNER . '/' . GH_REPO . '/zip/refs/heads/' . rawurlencode(GH_BRANCH) . '?_=' . time();
         out('Downloading the newest GitHub main-branch snapshot…');
-        httpGet($zipUrl, $zipFile);
 
-        $bytes = validateDownloadedFile($zipFile);
-        out('Downloaded ' . number_format($bytes) . ' bytes.');
-
-        // ZipArchive::open() on a zero-byte file is deprecated in newer PHP/libzip.
-        // Validate the ZIP signature first so a bad download produces a useful loader
-        // error instead of a PHP deprecation warning.
-        $signature = @file_get_contents($zipFile, false, null, 0, 4);
-        if ($signature === false || strlen($signature) < 2 || substr($signature, 0, 2) !== 'PK') {
-            $prefix = $signature === false ? 'unreadable' : strtoupper(bin2hex($signature));
-            throw new RuntimeException('GitHub download is not a valid ZIP archive (signature ' . $prefix . ').');
+        // Important: download into memory first. Some shared-hosting cURL builds
+        // report HTTP 200 but write zero bytes when CURLOPT_FILE is used.
+        $zipBytes = httpGetMemory($zipUrl, 'application/zip, application/octet-stream, */*');
+        $byteCount = strlen($zipBytes);
+        if ($byteCount < 4 || substr($zipBytes, 0, 2) !== 'PK') {
+            $prefix = strtoupper(bin2hex(substr($zipBytes, 0, 12)));
+            throw new RuntimeException('GitHub response was not a ZIP archive. First bytes: ' . ($prefix ?: 'none'));
         }
+        if (file_put_contents($zipFile, $zipBytes, LOCK_EX) !== $byteCount) {
+            throw new RuntimeException('Could not save the downloaded repository ZIP to disk.');
+        }
+        unset($zipBytes);
+        out('Saved repository ZIP: ' . number_format($byteCount) . ' bytes.');
 
         $zip = new ZipArchive();
-        $open = $zip->open($zipFile);
+        $open = $zip->open($zipFile, ZipArchive::RDONLY);
         if ($open !== true) {
             throw new RuntimeException('Could not open downloaded repository ZIP. ZipArchive error code: ' . (string)$open);
         }
 
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
-            if ($name === false) continue;
-            safeRelative($name);
+            if ($name !== false) safeRelative($name);
         }
         if (!$zip->extractTo($extractDir)) {
             $zip->close();
@@ -317,8 +222,7 @@ function deployLatest(string $root, array $remote): array {
 
         foreach ($iterator as $item) {
             $source = $item->getPathname();
-            $relative = substr($source, strlen($sourceRoot) + 1);
-            $relative = safeRelative($relative);
+            $relative = safeRelative(substr($source, strlen($sourceRoot) + 1));
             if ($relative === '' || shouldPreserve($relative)) continue;
             $target = $root . DIRECTORY_SEPARATOR . str_replace('/', DIRECTORY_SEPARATOR, $relative);
 
@@ -399,38 +303,20 @@ $upToDate = $remote && !empty($state['sha']) && hash_equals((string)$remote['sha
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>LearnPiano GitHub Loader</title>
 <style>
-:root{color-scheme:dark;--bg:#071019;--panel:#0d1823;--line:#203447;--text:#eaf5ff;--muted:#91a7ba;--good:#57e389;--warn:#ffb347;--blue:#29d6ff;--bad:#ff6b6b}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}.wrap{max-width:980px;margin:40px auto;padding:0 18px}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:20px;margin:14px 0}h1{margin:.1em 0}.muted{color:var(--muted)}.status{font-size:1.2rem;font-weight:800}.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}code{background:#07131d;border:1px solid var(--line);padding:2px 6px;border-radius:5px}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.row>div{flex:1;min-width:240px}.btn{display:inline-block;border:0;border-radius:10px;padding:12px 17px;background:#0c6381;color:white;font-weight:800;cursor:pointer}.btn:hover{background:#0e789b}.log{background:#040a0f;border:1px solid var(--line);border-radius:10px;padding:12px;max-height:430px;overflow:auto;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}.line.file{color:#afd9ff}.line.ok{color:var(--good)}.line.error{color:var(--bad)}.sha{font-family:ui-monospace,monospace}.tiny{font-size:.86rem}.notice{border-left:4px solid var(--warn);padding-left:12px}</style>
+:root{color-scheme:dark;--bg:#071019;--panel:#0d1823;--line:#203447;--text:#eaf5ff;--muted:#91a7ba;--good:#57e389;--warn:#ffb347;--bad:#ff6b6b}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--text);font:15px/1.5 system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}.wrap{max-width:980px;margin:40px auto;padding:0 18px}.card{background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:20px;margin:14px 0}h1{margin:.1em 0}.muted{color:var(--muted)}.status{font-size:1.2rem;font-weight:800}.good{color:var(--good)}.warn{color:var(--warn)}.bad{color:var(--bad)}code{background:#07131d;border:1px solid var(--line);padding:2px 6px;border-radius:5px}.row{display:flex;gap:12px;align-items:center;flex-wrap:wrap}.row>div{flex:1;min-width:240px}.btn{display:inline-block;border:0;border-radius:10px;padding:12px 17px;background:#0c6381;color:white;font-weight:800;cursor:pointer}.btn:hover{background:#0e789b}.log{background:#040a0f;border:1px solid var(--line);border-radius:10px;padding:12px;max-height:430px;overflow:auto;font:12px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace}.line.file{color:#afd9ff}.line.ok{color:var(--good)}.line.error{color:var(--bad)}.sha{font-family:ui-monospace,monospace}.tiny{font-size:.86rem}.notice{border-left:4px solid var(--warn);padding-left:12px}</style>
 </head>
 <body><div class="wrap">
 <h1>LearnPiano GitHub Loader</h1>
-<p class="muted">Synchronises this server with the current <code><?=h(GH_BRANCH)?></code> branch of <code><?=h(GH_OWNER . '/' . GH_REPO)?></code>.</p>
-
+<p class="muted">Synchronises this server with <code><?=h(GH_OWNER . '/' . GH_REPO)?></code> / <code><?=h(GH_BRANCH)?></code>.</p>
 <div class="card">
-<?php if ($error): ?>
-<div class="status bad">Loader error</div><p><?=h($error)?></p>
-<?php elseif ($upToDate): ?>
-<div class="status good">✓ Server is on the latest GitHub version</div>
-<?php else: ?>
-<div class="status warn">Update available / server version not yet recorded</div>
-<?php endif; ?>
+<?php if ($error): ?><div class="status bad">Loader error</div><p><?=h($error)?></p>
+<?php elseif ($upToDate): ?><div class="status good">✓ Server is on the latest GitHub version</div>
+<?php else: ?><div class="status warn">Update available / server version not yet recorded</div><?php endif; ?>
 <div class="row">
 <div><b>GitHub:</b><br><span class="sha"><?=h($remote ? substr($remote['sha'],0,12) : 'unknown')?></span><br><span class="tiny muted"><?=h($remote['message'] ?? '')?></span></div>
 <div><b>Server:</b><br><span class="sha"><?=h(!empty($state['sha']) ? substr((string)$state['sha'],0,12) : 'not recorded')?></span><br><span class="tiny muted"><?=h($state['deployed_at'] ?? '')?></span></div>
-</div>
-</div>
-
-<div class="card">
-<h2>Load newest version</h2>
-<p>This downloads a fresh snapshot directly from GitHub, creates any missing folders, and replaces matching files with the current repository versions.</p>
-<form method="post"><input type="hidden" name="action" value="update"><button class="btn" type="submit">↻ Load latest from GitHub</button></form>
-<p class="tiny muted">Existing server-only files are deliberately not deleted. <code><?=h(STATE_FILE)?></code>, <code><?=h(LOCAL_CONFIG)?></code>, Git metadata and loader temporary data are preserved.</p>
-</div>
-
-<div class="card">
-<h2>Deployment log</h2><div class="log"><?php foreach ($log as $entry): ?><div class="line <?=h($entry['type'])?>">[<?=h($entry['time'])?>] <?=h($entry['message'])?></div><?php endforeach; ?></div>
-</div>
-
-<div class="card notice">
-<b>Security note:</b> this repository is public, so the loader does not need or contain a GitHub token. Anyone who can reach this page could trigger a refresh of the same public code. For a production site, protect <code>loader.php</code> with cPanel directory protection, rename/remove it after deployment, or add your own authentication.
-</div>
+</div></div>
+<div class="card"><h2>Load newest version</h2><p>Downloads the current GitHub snapshot and replaces matching project files. Server-only files are not deleted.</p><form method="post"><input type="hidden" name="action" value="update"><button class="btn" type="submit">↻ Load latest from GitHub</button></form></div>
+<div class="card"><h2>Deployment log</h2><div class="log"><?php foreach ($log as $entry): ?><div class="line <?=h($entry['type'])?>">[<?=h($entry['time'])?>] <?=h($entry['message'])?></div><?php endforeach; ?></div></div>
+<div class="card notice"><b>Security note:</b> this repository is public, so this loader contains no GitHub token. Protect or remove <code>loader.php</code> when you no longer need web-triggered deployments.</div>
 </div></body></html>
