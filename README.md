@@ -1,69 +1,56 @@
-# LearnPiano
+# LearnPiano — calibrated falling-note piano trainer
 
-LearnPiano is a browser-based piano learning prototype designed to sit above or in front of a real keyboard.
+A browser-based piano lesson prototype combining falling notes, a resizable keyboard that can be aligned with a real piano, sampled audio, and a local microphone note listener.
 
-The project now combines the original **falling-note / calibrated keyboard trainer** with the newer **live microphone listener** rather than treating them as separate versions.
+## Current default lesson: Beethoven's Moonlight Sonata
+
+The default is **Piano Sonata No. 14, Op. 27 No. 2, movement I (Adagio sostenuto)**. Its full MusicXML is fetched and cached as `moonlight_sonata_mvt1.musicxml`, independently of any obsolete `demo.musicxml` on the server. The pinned score source and commit are documented in `moonlight-source.txt`.
+
+**Tempo:** the starting position is **quarter note = 52 BPM**, a suggested practice value, **not a numerical tempo claimed to have been specified by Beethoven**. The control is adjustable. The source is in 2/2; the BPM label intentionally names quarter-note units. Where an imported MusicXML file supplies a numerical tempo, the parser reads it. Our expressive playback is an interpretation, not a recording of a pianist or a definitive reading of Beethoven's intentions.
 
 ## Core features
 
-- Falling-note piano-roll display that lands directly on the matching on-screen piano key.
-- On-screen piano can be **moved and resized from every edge/corner** so the keys can be physically aligned with a real keyboard.
-- **Full size mode preserves that calibration**: the piano keeps the same pixel width, horizontal position and keyboard height instead of stretching to fill the screen.
-- Small-screen fullscreen requests landscape orientation and uses a CSS landscape fallback where orientation locking is unavailable.
-- 61-key, 88-key and score-range views.
-- MusicXML import from `.musicxml` / `.xml` files.
-- Automatically loads `demo.musicxml`; if needed the PHP file attempts to cache the public-domain MusicXML for **Claude Debussy — Clair de Lune**.
-- Sampled grand-piano playback using Yamaha C5 / Salamander recordings, with a synthesized fallback if samples cannot load.
-- Tempo, lead-time and timeline/scrub controls.
-- Keyboard keys can be tapped/clicked to audition notes.
+- Falling notes reach corresponding keys on an onscreen piano, with different colours for the two MusicXML parts.
+- Drag the trainer to reposition it. Resize from all four edges and corners to line up with a physical keyboard.
+- Full-size mode preserves the calibrated width, horizontal position and keyboard height rather than stretching keys.
+- Small screens attempt landscape orientation, with a CSS fallback.
+- 61-key, 88-key and score-range layouts; timeline, lead-time and tempo controls.
+- Import `.musicxml` and `.xml` files.
+- Sampled piano notes with an oscillator fallback if a sample is not yet available. The expressive engine adds velocity-aware volume and a modest attack-brightness filter; **true multisampled velocity layers are not yet implemented**.
+- Tap an onscreen key to audition it.
 
-## Live real-piano listener
+## Practice versus Performance
 
-Press **Listen** and play one note at a time on the real piano.
+The playback selector is next to the tempo control.
 
-- **Blue key** = note currently heard through the microphone.
-- **Green key** = the heard note matches one of the lesson notes currently reaching the keyboard.
-- The UI reports whether the played note is correct, too low or too high.
-- Sensitivity, detector confidence and A4 reference tuning can be adjusted.
-- Pitch analysis runs locally in the browser; the app does not upload microphone recordings.
+**Practice · exact pulse:** straight, notated note timing and even volume, intended for learning pitches and rhythmic structure. This is deliberately machine-steady.
 
-The listener is currently monophonic. Polyphonic/chord transcription is a later stage.
+**Performance · interpretation:** a clearly labelled *illustrative* interpretation that uses a continuous phrase-shaped tempo curve (not random timing jitter), parses written dynamics where encoded, separates a candidate melody from accompaniment using score voice information and limited heuristics, and models held notes through score pedal instructions or illustrative measure-by-measure changes. A realtime cue shows approximate instantaneous quarter-note BPM and the pedal convention. Students should hear differences and learn to make their own musical decisions, not imitate a generated performance uncritically.
+
+The updated parser handles **all MusicXML piano parts**, including the two parts in the default Moonlight file. It handles chords, multiple voices, ties, dynamics and simple pedal directions. It is not a complete MusicXML notation engine: sophisticated rubato, all articulations, historic pedal technique and complete engraving are outside this prototype.
+
+## Microphone listener
+
+Tap **Listen** and play a single real note. The blue key indicates the detected pitch; a matching lesson note highlights green. The browser performs local monophonic pitch detection without uploading microphone recordings. Sensitivity, confidence and A4 tuning are adjustable. It cannot yet reliably analyse simultaneous chords, key velocity, pedal use or musical-expression quality. Therefore it does **not** award an expression grade.
 
 ## Diagnostics
 
-The single `index.php` also includes a small diagnostics endpoint.
+Use **Diagnostics** to copy a report, or inspect the server's `piano_debug.log`. For feedback about a slow/missing note or mobile audio, record the displayed tempo, chosen mode, device and score note count in the report.
 
-Browser/audio/microphone errors and useful runtime events are written to:
+## Deploy using loader.php
 
-```text
-piano_debug.log
-```
+1. Keep the repository as the source of truth for project code.
+2. Open your deployed `loader.php` in the browser and select **Load latest from GitHub**.
+3. The loader installs `index.php`, `index.payload.b64.gz`, `expression-engine.b64.gz` and other tracked project files. It also removes previously GitHub-managed files that have been deleted upstream while protecting server-only data.
+4. Open `index.php`, confirm the default Moonlight score loads, select Practice or Performance, and test playback. **You do not need to delete old project files first.**
 
-Use the **Diagnostics** button to copy a compact report that can be pasted back into ChatGPT when testing on a phone.
+The small `index.php` verifies SHA-256 digests of the original trainer payload and expression engine, assembles them inside the same existing application closure, and writes `.learnpiano-runtime.php`. A missing or corrupt file causes a visible boot error directing you back to the loader rather than silently loading an older version. PHP 8.1+, ZipArchive, HTTPS and a writable project folder are required. Protect the web-facing loader with directory authentication or remove it when deployment is finished.
 
-## Running it
+## Roadmap and limitations
 
-The web app itself remains a **single `index.php` entry point**.
+- Add real multi-velocity piano sample layers and improved sympathetic resonance.
+- Offer optional learner-controlled phrase curves and accurate score pedal maps, including modern versus historical pedal explanations.
+- Improve microphone polyphony, repeated-note detection, timing alignment and onset detection before implementing separate accuracy/expression feedback.
+- Restore complete Standard MIDI import and persist calibration and practice history.
 
-1. Put the repository files in a PHP-enabled HTTPS folder.
-2. Open the site in the browser.
-3. Resize/move the piano until it lines up with your real keyboard.
-4. Press **Full size** to enter the clean teaching view without losing that calibration.
-5. Press **Play** to run the falling-note score.
-6. Optionally press **Listen** to compare notes from the real piano with the lesson.
-
-Microphone access requires HTTPS in normal browser use.
-
-## GitHub loader
-
-`loader.php` updates the hosted copy from the repository's `main` branch. It preserves loader state/temp files and server-only files rather than wiping the directory.
-
-## Current roadmap
-
-- Improve microphone bass-note stability and octave correction.
-- Add note-onset detection for repeated notes.
-- Add polyphonic/chord recognition.
-- Add wait-for-correct-note practice mode.
-- Score timing and pitch accuracy.
-- Restore/add Standard MIDI import alongside MusicXML.
-- Persist keyboard calibration and practice statistics.
+This is educational software; a score is an important source of truth for pitches and durations, but an AI-generated performance is **one example of interpretation**, not an absolute musical standard.
