@@ -2,16 +2,18 @@
 declare(strict_types=1);
 
 /**
- * LearnPiano bootstrap. GitHub's loader installs the three matched files:
- * index.php, index.payload.b64.gz and expression-engine.b64.gz.
- * The existing trainer is never replaced by a stripped-down interface.
+ * LearnPiano bootstrap: the GitHub loader installs all four matched files:
+ * index.php, index.payload.b64.gz, expression-engine.b64.gz,
+ * and listener-feedback.js. The full calibrated trainer is retained.
  */
 const LEARNPIANO_PAYLOAD_SHA256 = '55eed3fad2c62996330e75e80e737387044dead9479a982d8001c872eb7d8ed4';
 const LEARNPIANO_EXPRESSION_SHA256 = 'a1a77920d6b63b732bc94598404226d4d819570664283a6142b4d56ad0180f94';
+const LEARNPIANO_FEEDBACK_SHA256 = 'c764b6863d22b778407dedbc8b526ba2972b42079e71b944266f29d5357acd4c';
 
 $root = __DIR__;
 $payloadFile = $root . '/index.payload.b64.gz';
 $expressionFile = $root . '/expression-engine.b64.gz';
+$feedbackFile = $root . '/listener-feedback.js';
 $runtimeFile = $root . '/.learnpiano-runtime.php';
 
 function pianoBootFail(string $message): never {
@@ -40,30 +42,33 @@ function pianoDecodeVerified(string $path, string $expectedHash, string $label):
 
 $source = pianoDecodeVerified($payloadFile, LEARNPIANO_PAYLOAD_SHA256, 'Trainer payload');
 $expression = pianoDecodeVerified($expressionFile, LEARNPIANO_EXPRESSION_SHA256, 'Expression engine');
+if (!is_file($feedbackFile) || !is_readable($feedbackFile)) {
+    pianoBootFail('Listener feedback file is missing or unreadable.');
+}
+$feedback = file_get_contents($feedbackFile);
+if (!is_string($feedback) || !hash_equals(LEARNPIANO_FEEDBACK_SHA256, hash('sha256', $feedback))) {
+    pianoBootFail('Listener feedback failed its SHA-256 integrity check.');
+}
 
-// Inject inside the existing application closure. It reuses the current controls,
-// audio graph, falling notes, microphone listener and calibration rather than
-// launching a second app or running a separate unconnected browser script.
+// Inject the two extensions inside the original app closure. They share its
+// microphone, score, audio, falling-note canvas and calibrated key elements.
 $anchor = 'fit();loadDemo();d(';
 if (substr_count($source, $anchor) !== 1) {
-    pianoBootFail('The trainer boot anchor has changed; the expression engine was not injected.');
+    pianoBootFail('The trainer boot anchor has changed; extensions were not injected.');
 }
-$source = str_replace($anchor, $expression . "\n" . $anchor, $source);
+$source = str_replace($anchor, $expression . "\n" . $feedback . "\n" . $anchor, $source);
 $runtimeHash = hash('sha256', $source);
 $needsWrite = !is_file($runtimeFile) || @hash_file('sha256', $runtimeFile) !== $runtimeHash;
 if ($needsWrite) {
     $temporary = $runtimeFile . '.new-' . bin2hex(random_bytes(6));
     if (@file_put_contents($temporary, $source, LOCK_EX) !== strlen($source)) {
         @unlink($temporary);
-        pianoBootFail('Could not write the expression-enabled runtime. Check folder permissions.');
+        pianoBootFail('Could not write the expression and feedback-enabled runtime. Check folder permissions.');
     }
     @chmod($temporary, 0644);
-    // Linux rename is atomic and replaces the previous runtime without leaving
-    // a gap where concurrent requests could find the application missing.
     if (!@rename($temporary, $runtimeFile)) {
         @unlink($temporary);
-        pianoBootFail('Could not activate the expression-enabled runtime.');
+        pianoBootFail('Could not activate the feedback-enabled runtime.');
     }
 }
-
 require $runtimeFile;
