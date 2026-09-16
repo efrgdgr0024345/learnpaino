@@ -8,7 +8,8 @@ feedbackStyle.textContent = `
   /* During grading, expected notes alone must never be painted green. */
   body.listener-grading .key.active.white:not(.feedback-correct):not(.feedback-wrong):not(.feedback-missed) {background:linear-gradient(#f5f5f5,#c4ced7)!important;}
   body.listener-grading .key.active.black:not(.feedback-correct):not(.feedback-wrong):not(.feedback-missed) {background:linear-gradient(#2a3540,#0b1017)!important;}
-  body.listener-grading .key.heard:not(.feedback-correct):not(.feedback-wrong):not(.feedback-missed) {box-shadow:none!important;}
+  body.listener-grading .key.heard.white:not(.feedback-correct):not(.feedback-wrong):not(.feedback-missed) {background:linear-gradient(#f5f5f5,#c4ced7)!important;box-shadow:none!important;}
+  body.listener-grading .key.heard.black:not(.feedback-correct):not(.feedback-wrong):not(.feedback-missed) {background:linear-gradient(#2a3540,#0b1017)!important;box-shadow:none!important;}
   #trainer .key.feedback-correct.white,#trainer .key.feedback-correct.black {background:linear-gradient(#aaffca,#13a449)!important;box-shadow:0 0 20px #4cfc82,inset 0 0 0 2px #e8fff2!important;}
   #trainer .key.feedback-wrong.white,#trainer .key.feedback-wrong.black {background:linear-gradient(#ffb1ac,#d52b40)!important;box-shadow:0 0 20px #fc415c,inset 0 0 0 2px #fff0ed!important;}
   #trainer .key.feedback-missed.white,#trainer .key.feedback-missed.black {background:linear-gradient(#a8dcff,#2276d4)!important;box-shadow:0 0 15px #409dff,inset 0 0 0 2px #d8eeff!important;}
@@ -62,8 +63,9 @@ function feedbackReset(){
 function feedbackPaint(){
   const now=performance.now();
   for(const [m,k] of keyEls){
-    const green=(feedbackGoodUntil.get(m)||0)>now;
-    const red=!green&&(feedbackWrongUntil.get(m)||0)>now;
+    const held=micOn&&lastMidi===m&&now-lastAt<500&&feedbackLastDecision?.m===m;
+    const green=(feedbackGoodUntil.get(m)||0)>now||(held&&feedbackLastDecision.kind==='correct');
+    const red=!green&&((feedbackWrongUntil.get(m)||0)>now||(held&&feedbackLastDecision.kind==='wrong'));
     k.classList.toggle('feedback-correct',green);
     k.classList.toggle('feedback-wrong',red);
     k.classList.toggle('feedback-missed',!green&&!red&&feedbackMissedPitches.has(m));
