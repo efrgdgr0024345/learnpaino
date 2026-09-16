@@ -1,74 +1,69 @@
 # LearnPiano
 
-A browser-based piano learning project with an 88-key on-screen keyboard, falling lesson notes, synthesized demo playback, and a **live microphone listener** that identifies a real piano note and highlights the matching key.
+LearnPiano is a browser-based piano learning prototype designed to sit above or in front of a real keyboard.
 
-## What is new
+The project now combines the original **falling-note / calibrated keyboard trainer** with the newer **live microphone listener** rather than treating them as separate versions.
 
-The live listener uses the Web Audio API and a lightweight YIN-style pitch detector running entirely in the browser.
+## Core features
 
-- **Orange key** = the lesson/demo expects this note.
-- **Blue key** = this is the note currently heard through the microphone.
-- **Green key** = the real note matches the lesson note.
-- Shows detected note name, MIDI number, frequency, tuning offset in cents, and detector confidence.
-- Sensitivity and confidence controls help with different microphones/rooms.
-- A4 reference tuning can be adjusted from 430–450 Hz.
-- Diagnostic log records microphone startup/errors and demo state.
-- No microphone recording is uploaded by the app; analysis happens locally in the browser.
+- Falling-note piano-roll display that lands directly on the matching on-screen piano key.
+- On-screen piano can be **moved and resized from every edge/corner** so the keys can be physically aligned with a real keyboard.
+- **Full size mode preserves that calibration**: the piano keeps the same pixel width, horizontal position and keyboard height instead of stretching to fill the screen.
+- Small-screen fullscreen requests landscape orientation and uses a CSS landscape fallback where orientation locking is unavailable.
+- 61-key, 88-key and score-range views.
+- MusicXML import from `.musicxml` / `.xml` files.
+- Automatically loads `demo.musicxml`; if needed the PHP file attempts to cache the public-domain MusicXML for **Claude Debussy — Clair de Lune**.
+- Sampled grand-piano playback using Yamaha C5 / Salamander recordings, with a synthesized fallback if samples cannot load.
+- Tempo, lead-time and timeline/scrub controls.
+- Keyboard keys can be tapped/clicked to audition notes.
 
-## Run it
+## Live real-piano listener
 
-The application is a single `index.php` file.
+Press **Listen** and play one note at a time on the real piano.
 
-1. Upload the repository contents to a PHP-enabled web folder.
-2. Open the site over **HTTPS**. Modern browsers require HTTPS for microphone access (except localhost).
-3. Press **Listen** and allow microphone permission.
-4. Play one note on a real piano.
-5. The detected key will light blue on the 88-key keyboard.
-6. Press **Play demo** to compare live playing against the orange target notes. A correct match becomes green.
+- **Blue key** = note currently heard through the microphone.
+- **Green key** = the heard note matches one of the lesson notes currently reaching the keyboard.
+- The UI reports whether the played note is correct, too low or too high.
+- Sensitivity, detector confidence and A4 reference tuning can be adjusted.
+- Pitch analysis runs locally in the browser; the app does not upload microphone recordings.
 
-For local development:
+The listener is currently monophonic. Polyphonic/chord transcription is a later stage.
 
-```bash
-php -S 127.0.0.1:8000
-```
+## Diagnostics
 
-Then open `http://127.0.0.1:8000`.
+The single `index.php` also includes a small diagnostics endpoint.
 
-## How note detection works
-
-1. Browser microphone audio is captured with `getUserMedia()`.
-2. `AnalyserNode` provides a short waveform window.
-3. The waveform is downsampled to reduce CPU use on phones.
-4. A YIN-style periodicity detector estimates the fundamental frequency.
-5. Frequency is converted to the nearest MIDI note using the selected A4 reference.
-6. Several consecutive estimates are combined before a key is considered stable.
-7. The stable MIDI note is mapped directly onto the on-screen 88-key keyboard.
-
-## Important limitation
-
-The current listener is **monophonic**. It is designed to recognise one dominant piano note at a time. Real piano tones contain strong harmonics and room reflections, so occasional octave/harmonic mistakes are possible, especially during the first attack of a note or with sustain pedal held down.
-
-The next major step would be **polyphonic/chord transcription** using a frequency-domain or machine-learning note-onset model.
-
-## Browser support
-
-Best results are expected in current Chrome, Edge, Safari and mobile browsers with Web Audio + `getUserMedia()` support.
-
-## Project structure
+Browser/audio/microphone errors and useful runtime events are written to:
 
 ```text
-index.php                 Main application
-README.md                 Setup and project overview
-docs/LIVE_NOTE_LISTENER.md Technical explanation and roadmap
+piano_debug.log
 ```
 
-## Roadmap
+Use the **Diagnostics** button to copy a compact report that can be pasted back into ChatGPT when testing on a phone.
 
-- Improve bass-note stability and octave-error correction.
-- Add note-onset detection so repeated notes are recognised cleanly.
+## Running it
+
+The web app itself remains a **single `index.php` entry point**.
+
+1. Put the repository files in a PHP-enabled HTTPS folder.
+2. Open the site in the browser.
+3. Resize/move the piano until it lines up with your real keyboard.
+4. Press **Full size** to enter the clean teaching view without losing that calibration.
+5. Press **Play** to run the falling-note score.
+6. Optionally press **Listen** to compare notes from the real piano with the lesson.
+
+Microphone access requires HTTPS in normal browser use.
+
+## GitHub loader
+
+`loader.php` updates the hosted copy from the repository's `main` branch. It preserves loader state/temp files and server-only files rather than wiping the directory.
+
+## Current roadmap
+
+- Improve microphone bass-note stability and octave correction.
+- Add note-onset detection for repeated notes.
 - Add polyphonic/chord recognition.
-- Score timing and pitch accuracy against lesson notes.
-- Import MusicXML/MIDI for full pieces.
-- Add calibration profiles for acoustic piano, digital piano, phone and laptop microphones.
-- Persist practice statistics locally.
-- Add server-side optional diagnostic-log export without recording microphone audio.
+- Add wait-for-correct-note practice mode.
+- Score timing and pitch accuracy.
+- Restore/add Standard MIDI import alongside MusicXML.
+- Persist keyboard calibration and practice statistics.
