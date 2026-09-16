@@ -33,83 +33,159 @@ function h(string $value): string {
     return htmlspecialchars($value, ENT_QUOTES | ENT_SUBSTITUTE, 'UTF-8');
 }
 
+function validateDownloadedFile(string $file): int {
+    clearstatcache(true, $file);
+    if (!is_file($file)) {
+        throw new RuntimeException('GitHub download did not create a file.');
+    }
+
+    $bytes = filesize($file);
+    if ($bytes === false || $bytes <= 0) {
+        @unlink($file);
+        throw new RuntimeException('GitHub returned an empty download (0 bytes). The repository ZIP was not opened.');
+    }
+
+    return $bytes;
+}
+
 function httpGet(string $url, ?string $dest = null): string|bool {
     $headers = [
-        'User-Agent: LearnPiano-Loader/1.0',
-        'Accept: application/vnd.github+json',
+        'User-Agent: LearnPiano-Loader/1.1',
+        $dest === null
+            ? 'Accept: application/vnd.github+json'
+            : 'Accept: application/zip, application/octet-stream, */*',
         'Cache-Control: no-cache',
     ];
 
-    if (function_exists('curl_init')) {
-        $ch = curl_init($url);
-        if ($ch === false) {
-            throw new RuntimeException('Could not initialise cURL.');
+    // Never stream straight into the final destination. A failed/aborted request
+    // must not leave a zero-byte repo.zip that ZipArchive later attempts to open.
+    $downloadFile = null;
+    if ($dest !== null) {
+        $downloadFile = $dest . '.part-' . bin2hex(random_bytes(4));
+    }
+
+    try {
+        if (function_exists('curl_init')) {
+            $ch = curl_init($url);
+            if ($ch === false) {
+                throw new RuntimeException('Could not initialise cURL.');
+            }
+            curl_setopt_array($ch, [
+                CURLOPT_FOLLOWLOCATION => true,
+                CURLOPT_MAXREDIRS => 8,
+                CURLOPT_CONNECTTIMEOUT => 15,
+                CURLOPT_TIMEOUT => 90,
+                CURLOPT_HTTPHEADER => $headers,
+                CURLOPT_SSL_VERIFYPEER => true,
+                CURLOPT_SSL_VERIFYHOST => 2,
+                CURLOPT_ENCODING => '',
+            ]);
+
+            $fp = null;
+            if ($downloadFile !== null) {
+                $fp = fopen($downloadFile, 'wb');
+                if (!$fp) {
+                    curl_close($ch);
+                    throw new RuntimeException('Could not create temporary download file.');
+                }
+                curl_setopt($ch, CURLOPT_FILE, $fp);
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
+            } else {
+                curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+            }
+
+            $result = curl_exec($ch);
+            $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
+            $contentType = (string)curl_getinfo($ch, CURLINFO_CONTENT_TYPE);
+            $error = curl_error($ch);
+            curl_close($ch);
+            if (is_resource($fp)) fclose($fp);
+
+            if ($result === false || $status < 200 || $status >= 300) {
+                if ($downloadFile !== null) @unlink($downloadFile);
+                throw new RuntimeException("GitHub request failed (HTTP {$status})" . ($error ? ": {$error}" : '.'));
+            }
+
+            if ($downloadFile !== null) {
+                $bytes = validateDownloadedFile($downloadFile);
+                if (is_file($dest) && !@unlink($dest)) {
+                    @unlink($downloadFile);
+                    throw new RuntimeException('Could not replace the previous temporary repository ZIP.');
+                }
+                if (!@rename($downloadFile, $dest)) {
+                    @unlink($downloadFile);
+                    throw new RuntimeException('Could not activate the downloaded repository ZIP.');
+                }
+                out('GitHub download response: HTTP ' . $status . ', ' . number_format($bytes) . ' bytes' . ($contentType !== '' ? ', ' . $contentType : '') . '.');
+                return true;
+            }
+
+            $text = (string)$result;
+            if ($text === '') {
+                throw new RuntimeException('GitHub returned an empty API response.');
+            }
+            return $text;
         }
-        curl_setopt_array($ch, [
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_CONNECTTIMEOUT => 15,
-            CURLOPT_TIMEOUT => 90,
-            CURLOPT_HTTPHEADER => $headers,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_SSL_VERIFYHOST => 2,
+
+        if (!ini_get('allow_url_fopen')) {
+            throw new RuntimeException('Neither cURL nor allow_url_fopen is available for HTTPS downloads.');
+        }
+
+        $context = stream_context_create([
+            'http' => [
+                'method' => 'GET',
+                'timeout' => 90,
+                'header' => implode("\r\n", $headers),
+                'ignore_errors' => false,
+                'follow_location' => 1,
+                'max_redirects' => 8,
+            ],
+            'ssl' => [
+                'verify_peer' => true,
+                'verify_peer_name' => true,
+            ],
         ]);
 
-        $fp = null;
-        if ($dest !== null) {
-            $fp = fopen($dest, 'wb');
-            if (!$fp) {
-                curl_close($ch);
+        if ($downloadFile !== null) {
+            $in = @fopen($url, 'rb', false, $context);
+            if (!$in) throw new RuntimeException('Could not open GitHub download stream.');
+            $outHandle = @fopen($downloadFile, 'wb');
+            if (!$outHandle) {
+                fclose($in);
                 throw new RuntimeException('Could not create temporary download file.');
             }
-            curl_setopt($ch, CURLOPT_FILE, $fp);
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, false);
-        } else {
-            curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+            $copied = stream_copy_to_stream($in, $outHandle);
+            fclose($in);
+            fclose($outHandle);
+
+            if ($copied === false || $copied <= 0) {
+                @unlink($downloadFile);
+                throw new RuntimeException('GitHub download stream returned no data.');
+            }
+
+            $bytes = validateDownloadedFile($downloadFile);
+            if (is_file($dest) && !@unlink($dest)) {
+                @unlink($downloadFile);
+                throw new RuntimeException('Could not replace the previous temporary repository ZIP.');
+            }
+            if (!@rename($downloadFile, $dest)) {
+                @unlink($downloadFile);
+                throw new RuntimeException('Could not activate the downloaded repository ZIP.');
+            }
+            out('GitHub download response: ' . number_format($bytes) . ' bytes.');
+            return true;
         }
 
-        $result = curl_exec($ch);
-        $status = (int)curl_getinfo($ch, CURLINFO_RESPONSE_CODE);
-        $error = curl_error($ch);
-        curl_close($ch);
-        if (is_resource($fp)) fclose($fp);
-
-        if ($result === false || $status < 200 || $status >= 300) {
-            throw new RuntimeException("GitHub request failed (HTTP {$status})" . ($error ? ": {$error}" : '.'));
+        $data = @file_get_contents($url, false, $context);
+        if ($data === false) throw new RuntimeException('Could not download from GitHub.');
+        if ($data === '') throw new RuntimeException('GitHub returned an empty API response.');
+        return $data;
+    } finally {
+        if ($downloadFile !== null && is_file($downloadFile)) {
+            @unlink($downloadFile);
         }
-        return $dest !== null ? true : (string)$result;
     }
-
-    if (!ini_get('allow_url_fopen')) {
-        throw new RuntimeException('Neither cURL nor allow_url_fopen is available for HTTPS downloads.');
-    }
-
-    $context = stream_context_create([
-        'http' => [
-            'method' => 'GET',
-            'timeout' => 90,
-            'header' => implode("\r\n", $headers),
-            'ignore_errors' => false,
-        ],
-        'ssl' => [
-            'verify_peer' => true,
-            'verify_peer_name' => true,
-        ],
-    ]);
-
-    if ($dest !== null) {
-        $in = @fopen($url, 'rb', false, $context);
-        if (!$in) throw new RuntimeException('Could not open GitHub download stream.');
-        $out = @fopen($dest, 'wb');
-        if (!$out) { fclose($in); throw new RuntimeException('Could not create temporary download file.'); }
-        stream_copy_to_stream($in, $out);
-        fclose($in);
-        fclose($out);
-        return true;
-    }
-
-    $data = @file_get_contents($url, false, $context);
-    if ($data === false) throw new RuntimeException('Could not download from GitHub.');
-    return $data;
 }
 
 function remoteCommit(): array {
@@ -195,12 +271,24 @@ function deployLatest(string $root, array $remote): array {
         $zipUrl = 'https://codeload.github.com/' . GH_OWNER . '/' . GH_REPO . '/zip/refs/heads/' . rawurlencode(GH_BRANCH) . '?_=' . time();
         out('Downloading the newest GitHub main-branch snapshot…');
         httpGet($zipUrl, $zipFile);
-        $bytes = filesize($zipFile) ?: 0;
+
+        $bytes = validateDownloadedFile($zipFile);
         out('Downloaded ' . number_format($bytes) . ' bytes.');
+
+        // ZipArchive::open() on a zero-byte file is deprecated in newer PHP/libzip.
+        // Validate the ZIP signature first so a bad download produces a useful loader
+        // error instead of a PHP deprecation warning.
+        $signature = @file_get_contents($zipFile, false, null, 0, 4);
+        if ($signature === false || strlen($signature) < 2 || substr($signature, 0, 2) !== 'PK') {
+            $prefix = $signature === false ? 'unreadable' : strtoupper(bin2hex($signature));
+            throw new RuntimeException('GitHub download is not a valid ZIP archive (signature ' . $prefix . ').');
+        }
 
         $zip = new ZipArchive();
         $open = $zip->open($zipFile);
-        if ($open !== true) throw new RuntimeException('Could not open downloaded repository ZIP.');
+        if ($open !== true) {
+            throw new RuntimeException('Could not open downloaded repository ZIP. ZipArchive error code: ' . (string)$open);
+        }
 
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $name = $zip->getNameIndex($i);
