@@ -1,56 +1,49 @@
 # LearnPiano — calibrated falling-note piano trainer
 
-A browser-based piano lesson prototype combining falling notes, a resizable keyboard that can be aligned with a real piano, sampled audio, and a local microphone note listener.
+A browser piano lesson with movable and resizable keyboard alignment, falling notes, sampled audio, a microphone note listener, and Practice/Performance playback.
 
-## Current default lesson: Beethoven's Moonlight Sonata
+## Default lesson and tempo
 
-The default is **Piano Sonata No. 14, Op. 27 No. 2, movement I (Adagio sostenuto)**. Its full MusicXML is fetched and cached as `moonlight_sonata_mvt1.musicxml`, independently of any obsolete `demo.musicxml` on the server. The pinned score source and commit are documented in `moonlight-source.txt`.
+Beethoven, Piano Sonata No. 14, Op. 27 No. 2 — first movement, *Adagio sostenuto* (Moonlight Sonata). The full MusicXML is fetched and cached as `moonlight_sonata_mvt1.musicxml`; the pinned source is documented in `moonlight-source.txt`. An old server-only `demo.musicxml` does not override it.
 
-**Tempo:** the starting position is **quarter note = 52 BPM**, a suggested practice value, **not a numerical tempo claimed to have been specified by Beethoven**. The control is adjustable. The source is in 2/2; the BPM label intentionally names quarter-note units. Where an imported MusicXML file supplies a numerical tempo, the parser reads it. Our expressive playback is an interpretation, not a recording of a pianist or a definitive reading of Beethoven's intentions.
+Default tempo is **quarter note = 52 BPM**, an adjustable practice suggestion, not an exact numerical metronome indication supplied by Beethoven. MusicXML tempo markings are used when available. The source is in 2/2, and the tempo control uses quarter-note units.
 
-## Core features
+## Existing features preserved
 
-- Falling notes reach corresponding keys on an onscreen piano, with different colours for the two MusicXML parts.
-- Drag the trainer to reposition it. Resize from all four edges and corners to line up with a physical keyboard.
-- Full-size mode preserves the calibrated width, horizontal position and keyboard height rather than stretching keys.
-- Small screens attempt landscape orientation, with a CSS fallback.
-- 61-key, 88-key and score-range layouts; timeline, lead-time and tempo controls.
-- Import `.musicxml` and `.xml` files.
-- Sampled piano notes with an oscillator fallback if a sample is not yet available. The expressive engine adds velocity-aware volume and a modest attack-brightness filter; **true multisampled velocity layers are not yet implemented**.
-- Tap an onscreen key to audition it.
+- Falling notes land on matching onscreen keys; the MusicXML parser reads all parts, including Moonlight's two piano parts.
+- Drag and resize the trainer from every edge/corner to line up with a real keyboard. Full size preserves its calibrated geometry, with a mobile landscape fallback.
+- 61-key, 88-key and score-range layouts; timeline, lead-time and tempo controls; local MusicXML import.
+- Sampled piano audio with oscillator fallback and a playable onscreen keyboard.
+- **Practice:** even notated rhythm and steady pulse.
+- **Performance:** an illustrative phrase-shaped tempo, note velocity, approximate melody/accompaniment balance and basic pedalling. It is not a pianist's recording or the one correct interpretation. True multi-velocity sample layers and reliable expression assessment remain future work.
 
-## Practice versus Performance
+## Listen: green / red / blue note feedback
 
-The playback selector is next to the tempo control.
+Press **Listen** to grant microphone access, then **Play** to advance the score. The learner should play on the real keyboard as the notes reach the hit line.
 
-**Practice · exact pulse:** straight, notated note timing and even volume, intended for learning pitches and rhythmic structure. This is deliberately machine-steady.
+- **Green:** a distinct, stable note detected at the correct pitch within the timing window.
+- **Red:** a distinct, stable detected pitch that does not correspond to an expected note near the playhead.
+- **Blue:** an expected note whose timing window passed without a matching detected note. Missed keys remain blue until corrected or results are reset.
 
-**Performance · interpretation:** a clearly labelled *illustrative* interpretation that uses a continuous phrase-shaped tempo curve (not random timing jitter), parses written dynamics where encoded, separates a candidate melody from accompaniment using score voice information and limited heuristics, and models held notes through score pedal instructions or illustrative measure-by-measure changes. A realtime cue shows approximate instantaneous quarter-note BPM and the pedal convention. Students should hear differences and learn to make their own musical decisions, not imitate a generated performance uncritically.
+A summary beside Listen shows **correct / wrong / missed** counts. The app tolerates microphone-detection latency, can update a recently missed note to correct when detected late, and does not count misses while Listen is off or playback is paused. **Restart or seeking clears the grading results.** Starting Listen partway through a score only grades notes from that point onwards. Green/red highlights last briefly after key release and remain visible while the same sound is detected.
 
-The updated parser handles **all MusicXML piano parts**, including the two parts in the default Moonlight file. It handles chords, multiple voices, ties, dynamics and simple pedal directions. It is not a complete MusicXML notation engine: sophisticated rubato, all articulations, historic pedal technique and complete engraving are outside this prototype.
-
-## Microphone listener
-
-Tap **Listen** and play a single real note. The blue key indicates the detected pitch; a matching lesson note highlights green. The browser performs local monophonic pitch detection without uploading microphone recordings. Sensitivity, confidence and A4 tuning are adjustable. It cannot yet reliably analyse simultaneous chords, key velocity, pedal use or musical-expression quality. Therefore it does **not** award an expression grade.
+**Important limitations:** detection currently identifies one dominant pitch, not independent notes in a chord. It can incorrectly mark chord tones or fast repeated notes as missed. It is an approximate practice cue, *not* a trustworthy formal grading system. It does not reliably judge velocity, pedal or expression. Demo audio leaking into the microphone can cause false correct marks: use headphones or turn demo sound off. Microphone processing stays in the browser; only optional diagnostic events are sent to the server, not microphone recordings.
 
 ## Diagnostics
 
-Use **Diagnostics** to copy a report, or inspect the server's `piano_debug.log`. For feedback about a slow/missing note or mobile audio, record the displayed tempo, chosen mode, device and score note count in the report.
+Use the **Diagnostics** button or read `piano_debug.log` for the relevant session. Include the device, tempo, mode, score note count and a short example of an incorrect colour when reporting problems.
 
-## Deploy using loader.php
+## Deploy via the existing GitHub loader
 
-1. Keep the repository as the source of truth for project code.
-2. Open your deployed `loader.php` in the browser and select **Load latest from GitHub**.
-3. The loader installs `index.php`, `index.payload.b64.gz`, `expression-engine.b64.gz` and other tracked project files. It also removes previously GitHub-managed files that have been deleted upstream while protecting server-only data.
-4. Open `index.php`, confirm the default Moonlight score loads, select Practice or Performance, and test playback. **You do not need to delete old project files first.**
+Open the hosted `loader.php` in your browser, press **Load latest from GitHub**, then reopen `index.php`. There is no need to delete or manually upload project files. The loader installs these matched files among the other tracked project assets:
 
-The small `index.php` verifies SHA-256 digests of the original trainer payload and expression engine, assembles them inside the same existing application closure, and writes `.learnpiano-runtime.php`. A missing or corrupt file causes a visible boot error directing you back to the loader rather than silently loading an older version. PHP 8.1+, ZipArchive, HTTPS and a writable project folder are required. Protect the web-facing loader with directory authentication or remove it when deployment is finished.
+- `index.php` — SHA-256-validating runtime bootstrap.
+- `index.payload.b64.gz` — original full piano trainer, including calibrated UI, falling notes and microphone capture.
+- `expression-engine.b64.gz` — both-part MusicXML parser and Practice/Performance controls.
+- `listener-feedback.js` — timing-aware microphone verdicts and key colouring; injected into the existing application closure, not loaded as a separate webpage.
 
-## Roadmap and limitations
+The wrapper verifies each file before running the assembled application. If a file is missing, corrupt or incompatible, it displays an error pointing back to the loader. Protect the public-facing loader with access control or remove it when not deploying. PHP 8.1+, ZipArchive, HTTPS and a writable project folder are required.
 
-- Add real multi-velocity piano sample layers and improved sympathetic resonance.
-- Offer optional learner-controlled phrase curves and accurate score pedal maps, including modern versus historical pedal explanations.
-- Improve microphone polyphony, repeated-note detection, timing alignment and onset detection before implementing separate accuracy/expression feedback.
-- Restore complete Standard MIDI import and persist calibration and practice history.
+## Next improvements
 
-This is educational software; a score is an important source of truth for pitches and durations, but an AI-generated performance is **one example of interpretation**, not an absolute musical standard.
+Polyphonic chord detection and repeated-note onset detection; better mic/audio-loopback isolation and end-to-end latency calibration; velocity-layer samples and authentic resonance; learner-selected phrase curves and a separate, carefully validated musical-expression assessment; MIDI import and persistent calibration/practice history.
