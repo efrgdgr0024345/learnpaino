@@ -1,0 +1,7 @@
+Source: fosfrancesco/piano_corpora_dcml
+Pinned commit: aa732b635bc75c6583d86c6ac488e77b08b1b37e
+Path: scores/beethoven_piano_sonatas/14-1.musicxml
+Work: Beethoven, Sonata Op. 27 No. 2 “Moonlight”
+Movement: I. Adagio sostenuto
+
+The application downloads this full MusicXML automatically into the protected runtime demo.musicxml cache when needed.
