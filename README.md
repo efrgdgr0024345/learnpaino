@@ -2,11 +2,20 @@
 
 A browser piano lesson with movable and resizable keyboard alignment, falling notes, sampled audio, a microphone note listener, and Practice/Performance playback.
 
-## Default lesson and tempo
+## Song menu and tempo
 
-Beethoven, Piano Sonata No. 14, Op. 27 No. 2 — first movement, *Adagio sostenuto* (Moonlight Sonata). The full MusicXML is fetched and cached as `moonlight_sonata_mvt1.musicxml`; the pinned source is documented in `moonlight-source.txt`. An old server-only `demo.musicxml` does not override it.
+The page now opens with an **11-piece Song menu**: the existing full Moonlight Sonata movement plus ten additional public-domain piano works/arrangements. Changing the song stops playback, loads the selected MusicXML, resets the lesson, and preserves the chosen playback mode.
 
-Default tempo is **quarter note = 52 BPM**, an adjustable practice suggestion, not an exact numerical metronome indication supplied by Beethoven. MusicXML tempo markings are used when available. The source is in 2/2, and the tempo control uses quarter-note units.
+The visible playback choices are:
+
+- **Exact notes · steady pulse** — follows every pitch and duration in the selected MusicXML with a steady practice pulse.
+- **Soulful · performance interpretation** — uses the same score while adding the existing illustrative phrasing, dynamics, timing shape, balance and pedal behaviour.
+
+Moonlight remains the default at **quarter note = 52 BPM**, an adjustable practice suggestion rather than a numerical metronome marking claimed to be Beethoven's. Each menu entry also has a gentle suggested starting tempo that remains adjustable.
+
+### Score-source honesty
+
+Moonlight is a full score. The four Joplin entries are full arrangements in the pinned source library. Several other famous classical menu entries are **reduced public-domain teaching arrangements** from the source library rather than the complete original piano texture. The UI labels these as “Melody arrangement”, and exact mode means exact to that loaded arrangement — it does not pretend that a reduced arrangement is the composer's complete original score.
 
 ## Existing features preserved
 
@@ -27,7 +36,7 @@ Press **Listen** to grant microphone access, then **Play** to advance the score.
 
 A summary beside Listen shows **correct / wrong / missed** counts. The app tolerates microphone-detection latency, can update a recently missed note to correct when detected late, and does not count misses while Listen is off or playback is paused. **Restart or seeking clears the grading results.** Starting Listen partway through a score only grades notes from that point onwards. Green/red highlights last briefly after key release and remain visible while the same sound is detected.
 
-**Important limitations:** detection currently identifies one dominant pitch, not independent notes in a chord. It can incorrectly mark chord tones or fast repeated notes as missed. It is an approximate practice cue, *not* a trustworthy formal grading system. It does not reliably judge velocity, pedal or expression. Demo audio leaking into the microphone can cause false correct marks: use headphones or turn demo sound off. Microphone processing stays in the browser; only optional diagnostic events are sent to the server, not microphone recordings.
+**Important limitations:** the listener now combines dominant-pitch detection with score-aware spectral checks for several expected chord tones. This improves chord feedback but is still approximate and can miss chord tones or rapid repeated notes. It is an approximate practice cue, *not* a trustworthy formal grading system. It does not reliably judge velocity, pedal or expression. Demo audio leaking into the microphone can cause false correct marks: use headphones or turn demo sound off. Microphone processing stays in the browser; only optional diagnostic events are sent to the server, not microphone recordings.
 
 ## Diagnostics
 
@@ -39,8 +48,10 @@ Open the hosted `loader.php` in your browser, press **Load latest from GitHub**,
 
 - `index.php` — SHA-256-validating runtime bootstrap.
 - `index.payload.b64.gz` — original full piano trainer, including calibrated UI, falling notes and microphone capture.
-- `expression-engine.b64.gz` — both-part MusicXML parser and Practice/Performance controls.
-- `listener-feedback.js` — timing-aware microphone verdicts and key colouring; injected into the existing application closure, not loaded as a separate webpage.
+- `expression-engine.b64.gz` — both-part MusicXML parser and exact/soulful playback engine.
+- `song-library.js` — verified song selector and pinned public-domain MusicXML sources.
+- `listener-feedback.js` — timing-aware microphone verdicts, score-aware chord checks and key colouring; injected into the existing application closure, not loaded as a separate webpage.
+- `audio-isolation.js` — acoustic echo-cancellation microphone setup and fullscreen keyboard calibration.
 
 The wrapper verifies each file before running the assembled application. If a file is missing, corrupt or incompatible, it displays an error pointing back to the loader. Protect the public-facing loader with access control or remove it when not deploying. PHP 8.1+, ZipArchive, HTTPS and a writable project folder are required.
 
