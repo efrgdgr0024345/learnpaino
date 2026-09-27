@@ -4,9 +4,10 @@ declare(strict_types=1);
 /**
  * LearnPiano bootstrap: GitHub loader installs matched runtime components.
  */
-const LEARNPIANO_PAYLOAD_SHA256 = '55eed3fad2c62996330e75e80e737387044dead9479a982d8001c872eb7d8ed4';
+const LEARNPIANO_LIBRARY_ENGINE_SHA256 = '2bdc05becd73839b1ccfdef2d31e9d9cc439c8a87d878df7e8ba5bde087a67e7';
+const LEARNPIANO_PAYLOAD_SHA256 = 'd55a8a4d2dd32b5cf384e18e9a9061df264ae5c497628d87cd5041bc799eab89';
 const LEARNPIANO_EXPRESSION_SHA256 = 'a1a77920d6b63b732bc94598404226d4d819570664283a6142b4d56ad0180f94';
-const LEARNPIANO_SONG_LIBRARY_SHA256 = '3afe8721c8e35ef340c674e243daf3f6850046c30b85c48a8692e34efda90968';
+const LEARNPIANO_SONG_LIBRARY_SHA256 = '22aa63aa7eff289732455de73405fa7f1a3ced483cdd6ddc1f90de2055dafeed';
 const LEARNPIANO_FEEDBACK_SHA256 = '8d1830a21dc3b30b7eedf084f96b7cd1f08327dbaa8fdb69f0784e6631ed7533';
 const LEARNPIANO_COACH_SHA256 = '5d25e9671e2bb747cc14053fd019b8fb2b04c0237dc449461f5c67beeb037fe5';
 const LEARNPIANO_ISOLATION_SHA256 = 'ea3be0ce82094dc3398177326af51fc59d8af7ba73a4c443b51c7f08f79e0709';
@@ -51,11 +52,12 @@ $isolation = pianoReadVerified($isolationFile, LEARNPIANO_ISOLATION_SHA256, 'Aud
 
 $coach = pianoReadVerified($root . '/coach.js', LEARNPIANO_COACH_SHA256, 'Optional coach interface');
 
+$libraryEngine = pianoReadVerified($root . '/library-engine.js', LEARNPIANO_LIBRARY_ENGINE_SHA256, 'Library import engine');
 $anchor = 'fit();loadDemo();d('; 
 if (substr_count($source, $anchor) !== 1) pianoBootFail('The trainer boot anchor has changed; extensions were not injected.');
 $source = str_replace(
     $anchor,
-    $expression . "\n" . $songLibrary . "\n" . $feedback . "\n" . $isolation . "\n" . $coach . "\n" . $anchor,
+    $expression . "\n" . $songLibrary . "\n" . $feedback . "\n" . $isolation . "\n" . $coach . "\n" . $libraryEngine . "\n" . $anchor,
     $source
 );
 $runtimeHash = hash('sha256', $source);

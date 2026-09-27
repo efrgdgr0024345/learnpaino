@@ -8,7 +8,7 @@ from playwright.sync_api import sync_playwright
 ROOT=Path(__file__).resolve().parents[1]
 def run(*a,**kw):return subprocess.check_output(a,text=True,**kw)
 bootstrap=(ROOT/'index.php').read_text()
-for key,f,compressed in [('PAYLOAD','index.payload.b64.gz',True),('EXPRESSION','expression-engine.b64.gz',True),('SONG_LIBRARY','song-library.js',False),('FEEDBACK','listener-feedback.js',False),('ISOLATION','audio-isolation.js',False),('COACH','coach.js',False)]:
+for key,f,compressed in [('PAYLOAD','index.payload.b64.gz',True),('EXPRESSION','expression-engine.b64.gz',True),('SONG_LIBRARY','song-library.js',False),('FEEDBACK','listener-feedback.js',False),('ISOLATION','audio-isolation.js',False),('COACH','coach.js',False),('LIBRARY_ENGINE','library-engine.js',False)]:
     expected=re.search(r'LEARNPIANO_'+key+r"_SHA256 = '([a-f0-9]{64})'",bootstrap)[1]
     b=(ROOT/f).read_bytes();b=gzip.decompress(base64.b64decode(b)) if compressed else b
     assert hashlib.sha256(b).hexdigest()==expected,f
@@ -32,13 +32,16 @@ hook='''window.__coachTest={
 };\n'''
 with tempfile.TemporaryDirectory() as d:
     release=Path(d)
-    for f in ('index.php','index.payload.b64.gz','expression-engine.b64.gz','song-library.js','listener-feedback.js','audio-isolation.js','coach.js'):shutil.copy2(ROOT/f,release/f)
+    for f in ('index.php','index.payload.b64.gz','expression-engine.b64.gz','song-library.js','listener-feedback.js','audio-isolation.js','coach.js','library-engine.js'):shutil.copy2(ROOT/f,release/f)
     for f in ('demo.musicxml','moonlight_sonata_mvt1.musicxml'):(release/f).write_text(xml)
     html=run('php',str(release/'index.php'),timeout=45)
     assert '<!doctype html>' in html.lower(),html[:300]
     run('php','-l',str(release/'.learnpiano-runtime.php'))
     assert html.count('fit();loadDemo();d(')==1
     html=html.replace('fit();loadDemo();d(',hook+'fit();loadDemo();d(')
+    # Synthetic fixture replaces the default score only inside this test.
+    real_digest=json.loads((ROOT/'scores/catalogue.json').read_text())['songs'][0]['sha256']
+    html=html.replace(real_digest,hashlib.sha256(xml.encode()).hexdigest())
     # Test hook records notes AFTER filtering, not hypothetical score attacks.
     html=html.replace('return coachOldTone(m,dur,v,delay);','(window.__toneCalls ||= []).push(m); return coachOldTone(m,dur,v,delay);')
     with sync_playwright() as p:

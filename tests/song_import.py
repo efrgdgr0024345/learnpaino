@@ -36,6 +36,8 @@ for key, filename, compressed in [
     ('SONG_LIBRARY', 'song-library.js', False),
     ('FEEDBACK', 'listener-feedback.js', False),
     ('ISOLATION', 'audio-isolation.js', False),
+    ('COACH','coach.js',False),
+    ('LIBRARY_ENGINE','library-engine.js',False),
     ('COACH', 'coach.js', False),
 ]:
     expected = re.search(r"LEARNPIANO_" + key + r"_SHA256 = '([a-f0-9]{64})'", bootstrap)[1]
@@ -49,9 +51,11 @@ for key, filename, compressed in [
 catalogue = (ROOT / 'song-library.js').read_text().split('const lpSongWrap=')[0]
 js = 'console.log(JSON.stringify(require("vm").runInNewContext(' + json.dumps(catalogue + '\nLP_SONGS') + ')))'
 songs = json.loads(run('node', '-e', js))
-assert len(songs) == 11 and len({s['id'] for s in songs}) == 11
+assert len(songs) == 12 and len({s['id'] for s in songs}) == 12
 
 def fetch_score(song):
+    if song['url'].startswith('scores/'):
+        return 'https://learnpiano.test/'+song['url'], (ROOT/song['url']).read_bytes()
     assert song['url'].startswith('https://raw.githubusercontent.com/')
     req = urllib.request.Request(song['url'], headers={'User-Agent': 'LearnPiano-Regression/1.1'})
     with urllib.request.urlopen(req, timeout=30) as response:
@@ -61,7 +65,7 @@ def fetch_score(song):
 
 with ThreadPoolExecutor(max_workers=4) as pool:
     scores = dict(pool.map(fetch_score, songs))
-moonlight = scores[songs[0]['url']]
+moonlight = scores['https://learnpiano.test/'+songs[0]['url']]
 
 # A silent WAV makes the test independent of the sampled-piano host. Playback
 # scheduling and mode behaviour are tested, not acoustic quality or microphones.
@@ -133,7 +137,7 @@ with tempfile.TemporaryDirectory() as directory:
         page.wait_for_function('window.__lpTest && __lpTest.state().notes > 0 && !__lpTest.state().disabled')
         assert page.locator('.topbar #lpSongSelect').count() == 1
         chopin = next(s for s in songs if s['id'] == 'chopin-nocturne')
-        probe = page.evaluate('(text)=>__lpTest.probe(text)', scores[chopin['url']].decode('utf-8'))
+        probe = page.evaluate('(text)=>__lpTest.probe(text)', scores['https://learnpiano.test/'+chopin['url']].decode('utf-8'))
         assert probe['oldError'] == 'Invalid MusicXML' and probe['notes'] > 0, probe
         print('Reproduced old XMLDocument error; original Chopin XML text imports:', probe, flush=True)
         for song in songs:
@@ -156,15 +160,15 @@ with tempfile.TemporaryDirectory() as directory:
         for status, invalid in [(200, b'<score-partwise><part>'), (200, b'<html>not a score</html>'), (404, b'Not found')]:
             before = page.evaluate('__lpTest.state()')
             page.evaluate('(id)=>__lpTest.clearCache(id)', chopin['id'])
-            overrides[chopin['url']] = (status, invalid)
+            overrides['https://learnpiano.test/'+chopin['url']] = (status, invalid)
             assert page.evaluate('(id)=>__lpTest.load(id)', chopin['id']) is False
             after = page.evaluate('__lpTest.state()')
             assert (after['title'], after['notes'], after['loaded'], after['mode']) == (before['title'], before['notes'], before['loaded'], before['mode'])
             assert not after['disabled']
             assert 'Could not load' in page.locator('#status').inner_text()
-            del overrides[chopin['url']]
+            del overrides['https://learnpiano.test/'+chopin['url']]
             assert page.evaluate('(id)=>__lpTest.load(id)', chopin['id']) is True
         assert not errors, errors
         browser.close()
-print('PASS: 22 song/mode playback cases; XML, HTML and HTTP failure/retry cases; all component hashes; PHP and JavaScript syntax.')
+print('PASS: 24 song/mode playback cases; XML, HTML and HTTP failure/retry cases; all component hashes; PHP and JavaScript syntax.')
 (ROOT / 'song-test-results.json').write_text(json.dumps(report, indent=2) + '\n')
