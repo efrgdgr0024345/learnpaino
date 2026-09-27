@@ -1,0 +1,36 @@
+name: Pinned score source review
+on:
+  push:
+    branches: [feat/two-hand-library]
+    paths: [.github/workflows/source-review.yml]
+permissions:
+  contents: read
+jobs:
+  sources:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Collect pinned notation candidates for review
+        shell: python
+        run: |
+          import urllib.request, zipfile, io, pathlib, json, hashlib
+          root=pathlib.Path('source-review');root.mkdir()
+          url='https://codeload.github.com/musetrainer/library/zip/9128876f6164d96997c877a2be843349a32bdabb'
+          req=urllib.request.Request(url, headers={'User-Agent':'LearnPiano-Source-Review'})
+          with urllib.request.urlopen(req, timeout=45) as r: raw=r.read(10000000)
+          with zipfile.ZipFile(io.BytesIO(raw)) as z:
+            for n in z.namelist():
+              if n.endswith('.mxl') or n.endswith('/README.md'):
+                (root/pathlib.PurePosixPath(n).name).write_bytes(z.read(n))
+          moon='https://raw.githubusercontent.com/fosfrancesco/piano_corpora_dcml/aa732b635bc75c6583d86c6ac488e77b08b1b37e/scores/beethoven_piano_sonatas/14-1.musicxml'
+          with urllib.request.urlopen(moon,timeout=45) as r: (root/'moonlight.musicxml').write_bytes(r.read(5000000))
+          print('Candidate collection only; musical completeness and reuse terms not yet approved.')
+          print(json.dumps({p.name:hashlib.sha256(p.read_bytes()).hexdigest() for p in root.iterdir()},indent=2))
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: pinned-score-review
+          path: source-review/
+          retention-days: 3
