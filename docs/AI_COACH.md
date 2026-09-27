@@ -8,14 +8,22 @@ The existing piano, score menu, Exact/Soulful modes, microphone feedback, resizi
 2. In cPanel Terminal, run:
 
    ```bash
-   cd /home/learning/easyai.com.au/piano && php tools/configure-coach.php
+   cd /home/learning/easyai.com.au/piano && bash tools/configure-coach.sh
    ```
 
-3. At the hidden prompts, paste a new dedicated OpenAI project API key, choose a coach password of at least 12 characters and repeat the password. **Do not paste a real key into ChatGPT or a GitHub file.** The script will not contact OpenAI. Input does not appear in the command history. It needs an interactive terminal with `stty`; if unavailable use the private file method below.
+3. At the hidden prompts, paste a new dedicated OpenAI project API key, choose a coach password of 12-72 bytes (12-72 characters for ASCII) and repeat the password. **Do not paste a real key into ChatGPT or a GitHub file.** The script will not contact OpenAI. Input does not appear in the command history. The Bash helper uses built-in silent input and passes secrets to PHP through an anonymous pipe, not process arguments, exported environment variables or temporary input files. It needs an interactive cPanel Terminal, but does NOT require PHP `shell_exec`, `exec`, `system`, `popen` or `proc_open`. Leave those functions disabled. If a previous setup displayed `Hidden input unavailable`, update through the loader and use the Bash command above instead of invoking the PHP script directly.
 4. The secret file is saved as `/home/learning/.config/learnpiano/coach.php` (permissions 0600) and state goes in its private parent directory (0700). This path must remain outside every website document root on your account. Different hosting installations can set `LEARNPIANO_COACH_CONFIG` to an absolute private path.
 5. Reopen the piano. **Ask coach → enter the coach password → Ask.** The API key is never entered into the browser coach panel. API access/billing must be enabled on your OpenAI project. A ChatGPT subscription does not configure this server key.
 
 The hosting PHP build needs cURL, OpenSSL, sessions and Fileinfo. It should use HTTPS and writable private state storage. Do not trust arbitrary `X-Forwarded-Proto` headers; the endpoint requires HTTPS as reported by PHP or port 443. A reverse proxy must provide correct trusted HTTPS configuration. The test-only HTTP switch works only with a loopback client and is OFF by default.
+
+### Restricted-host setup checks
+
+Setup does not change PHP security settings, the player, the scores, runtime integrity fingerprints or API spending limits. An existing configuration is left unchanged unless you explicitly type `REPLACE`; replacement installs the displayed default settings. Ctrl+C cancels the helper. Key/password validation failures do not replace the existing file. A preflight checks the target path without reading credential contents.
+
+Hidden prompts prevent terminal echo and shell-history exposure, not capture by a compromised computer or account. The final private PHP file necessarily contains the API key in plaintext for server use; its password is hashed. It must stay outside all document roots. Never paste the key into chat or GitHub.
+
+For developers: `python tests/coach_setup.py` exercises dummy credentials in a pseudo-terminal with PHP process-launching functions disabled. It checks hidden input, cancellation, literal special characters, file permissions, refusal of public/symlink targets and replacement confirmation. It makes no network/API requests.
 
 ### Private-file alternative / settings
 
