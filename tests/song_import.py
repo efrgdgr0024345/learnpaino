@@ -4,7 +4,7 @@ Run: python -m pip install playwright==1.57.0
      python -m playwright install chromium
      python tests/song_import.py
 
-Downloads the 11 pinned score sources, but never uses microphone recordings or
+Loads the five bundled scores and seven pinned legacy score sources, but never uses microphone recordings or
 production credentials. Audio uses a short test WAV, not real piano recordings.
 """
 import base64
@@ -36,7 +36,6 @@ for key, filename, compressed in [
     ('SONG_LIBRARY', 'song-library.js', False),
     ('FEEDBACK', 'listener-feedback.js', False),
     ('ISOLATION', 'audio-isolation.js', False),
-    ('COACH','coach.js',False),
     ('LIBRARY_ENGINE','library-engine.js',False),
     ('COACH', 'coach.js', False),
 ]:
@@ -93,7 +92,7 @@ hook = hook.replace('parseXML(text).length', 'parseXML(text).notes.length')
 with tempfile.TemporaryDirectory() as directory:
     release = Path(directory)
     for filename in ['index.php', 'index.payload.b64.gz', 'expression-engine.b64.gz',
-                     'listener-feedback.js', 'audio-isolation.js', 'song-library.js', 'coach.js']:
+                     'listener-feedback.js', 'audio-isolation.js', 'song-library.js', 'coach.js', 'library-engine.js']:
         shutil.copy2(ROOT / filename, release / filename)
     for filename in ['demo.musicxml', 'moonlight_sonata_mvt1.musicxml']:
         (release / filename).write_bytes(moonlight)
