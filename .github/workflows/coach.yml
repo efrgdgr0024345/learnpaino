@@ -1,0 +1,28 @@
+name: Optional coach safety and browser integration
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  coach:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: php tests/coach_api.php
+      - run: python tests/coach_http.py
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/coach_browser.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coach-test-workspace
+          retention-days: 3
+          path: |
+            *.php
+            *.js
+            *.gz
+            tests/
+            docs/
+            tools/
+            coach-mobile-test.png

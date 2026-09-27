@@ -36,6 +36,7 @@ for key, filename, compressed in [
     ('SONG_LIBRARY', 'song-library.js', False),
     ('FEEDBACK', 'listener-feedback.js', False),
     ('ISOLATION', 'audio-isolation.js', False),
+    ('COACH', 'coach.js', False),
 ]:
     expected = re.search(r"LEARNPIANO_" + key + r"_SHA256 = '([a-f0-9]{64})'", bootstrap)[1]
     data = (ROOT / filename).read_bytes()
@@ -79,14 +80,16 @@ hook = '''window.__lpTest = {
   probe: text => {
     const doc=new DOMParser().parseFromString(text,'application/xml');
     let oldError='';try{parseXML(doc)}catch(e){oldError=e.message}
-    return {oldError,notes:parseXML(text).notes.length};
+    return {oldError,notes:parseXML(text).length};
   }
 };\n'''
+# probe returns the imported note count, not the score object's length.
+hook = hook.replace('parseXML(text).length', 'parseXML(text).notes.length')
 
 with tempfile.TemporaryDirectory() as directory:
     release = Path(directory)
     for filename in ['index.php', 'index.payload.b64.gz', 'expression-engine.b64.gz',
-                     'listener-feedback.js', 'audio-isolation.js', 'song-library.js']:
+                     'listener-feedback.js', 'audio-isolation.js', 'song-library.js', 'coach.js']:
         shutil.copy2(ROOT / filename, release / filename)
     for filename in ['demo.musicxml', 'moonlight_sonata_mvt1.musicxml']:
         (release / filename).write_bytes(moonlight)

@@ -8,6 +8,7 @@ const LEARNPIANO_PAYLOAD_SHA256 = '55eed3fad2c62996330e75e80e737387044dead9479a9
 const LEARNPIANO_EXPRESSION_SHA256 = 'a1a77920d6b63b732bc94598404226d4d819570664283a6142b4d56ad0180f94';
 const LEARNPIANO_SONG_LIBRARY_SHA256 = '3afe8721c8e35ef340c674e243daf3f6850046c30b85c48a8692e34efda90968';
 const LEARNPIANO_FEEDBACK_SHA256 = '8d1830a21dc3b30b7eedf084f96b7cd1f08327dbaa8fdb69f0784e6631ed7533';
+const LEARNPIANO_COACH_SHA256 = '129e738eab3c8df4b3da727ebab84283556cc854b5f02dd1b41c7ddfdfe6067f';
 const LEARNPIANO_ISOLATION_SHA256 = 'ea3be0ce82094dc3398177326af51fc59d8af7ba73a4c443b51c7f08f79e0709';
 
 $root = __DIR__;
@@ -48,11 +49,13 @@ $songLibrary = pianoReadVerified($songLibraryFile, LEARNPIANO_SONG_LIBRARY_SHA25
 $feedback = pianoReadVerified($feedbackFile, LEARNPIANO_FEEDBACK_SHA256, 'Listener feedback');
 $isolation = pianoReadVerified($isolationFile, LEARNPIANO_ISOLATION_SHA256, 'Audio isolation/fullscreen calibration');
 
-$anchor = 'fit();loadDemo();d(';
+$coach = pianoReadVerified($root . '/coach.js', LEARNPIANO_COACH_SHA256, 'Optional coach interface');
+
+$anchor = 'fit();loadDemo();d('; 
 if (substr_count($source, $anchor) !== 1) pianoBootFail('The trainer boot anchor has changed; extensions were not injected.');
 $source = str_replace(
     $anchor,
-    $expression . "\n" . $songLibrary . "\n" . $feedback . "\n" . $isolation . "\n" . $anchor,
+    $expression . "\n" . $songLibrary . "\n" . $feedback . "\n" . $isolation . "\n" . $coach . "\n" . $anchor,
     $source
 );
 $runtimeHash = hash('sha256', $source);
