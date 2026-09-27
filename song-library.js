@@ -41,6 +41,13 @@ lpSongWrap.append(lpSongText,lpSongSelect);
 
 const lpTop=document.querySelector('.topbar');
 const lpMode=document.querySelector('#expressionMode');
+if(lpMode){
+  for(const opt of lpMode.options){
+    if(opt.value==='practice') opt.textContent='Exact notes · steady pulse';
+    else if(opt.value==='performance') opt.textContent='Soulful · performance interpretation';
+  }
+  lpMode.title='Exact mode follows the selected score; Soulful mode adds illustrative phrasing, dynamics and timing shape.';
+}
 if(lpMode?.parentElement) lpMode.parentElement.insertAdjacentElement('beforebegin',lpSongWrap);
 else if(lpTop) lpTop.append(lpSongWrap);
 
