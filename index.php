@@ -6,12 +6,14 @@ declare(strict_types=1);
  */
 const LEARNPIANO_PAYLOAD_SHA256 = '55eed3fad2c62996330e75e80e737387044dead9479a982d8001c872eb7d8ed4';
 const LEARNPIANO_EXPRESSION_SHA256 = 'a1a77920d6b63b732bc94598404226d4d819570664283a6142b4d56ad0180f94';
+const LEARNPIANO_SONG_LIBRARY_SHA256 = '6b2a170eb3554cd656e5c39c51c4ae58bf3d309c2f7403d363fee8e312394dee';
 const LEARNPIANO_FEEDBACK_SHA256 = '8d1830a21dc3b30b7eedf084f96b7cd1f08327dbaa8fdb69f0784e6631ed7533';
 const LEARNPIANO_ISOLATION_SHA256 = 'ea3be0ce82094dc3398177326af51fc59d8af7ba73a4c443b51c7f08f79e0709';
 
 $root = __DIR__;
 $payloadFile = $root . '/index.payload.b64.gz';
 $expressionFile = $root . '/expression-engine.b64.gz';
+$songLibraryFile = $root . '/song-library.js';
 $feedbackFile = $root . '/listener-feedback.js';
 $isolationFile = $root . '/audio-isolation.js';
 $runtimeFile = $root . '/.learnpiano-runtime.php';
@@ -42,12 +44,17 @@ function pianoReadVerified(string $path, string $expectedHash, string $label): s
 
 $source = pianoDecodeVerified($payloadFile, LEARNPIANO_PAYLOAD_SHA256, 'Trainer payload');
 $expression = pianoDecodeVerified($expressionFile, LEARNPIANO_EXPRESSION_SHA256, 'Expression engine');
+$songLibrary = pianoReadVerified($songLibraryFile, LEARNPIANO_SONG_LIBRARY_SHA256, 'Song library');
 $feedback = pianoReadVerified($feedbackFile, LEARNPIANO_FEEDBACK_SHA256, 'Listener feedback');
 $isolation = pianoReadVerified($isolationFile, LEARNPIANO_ISOLATION_SHA256, 'Audio isolation/fullscreen calibration');
 
 $anchor = 'fit();loadDemo();d(';
 if (substr_count($source, $anchor) !== 1) pianoBootFail('The trainer boot anchor has changed; extensions were not injected.');
-$source = str_replace($anchor, $expression . "\n" . $feedback . "\n" . $isolation . "\n" . $anchor, $source);
+$source = str_replace(
+    $anchor,
+    $expression . "\n" . $songLibrary . "\n" . $feedback . "\n" . $isolation . "\n" . $anchor,
+    $source
+);
 $runtimeHash = hash('sha256', $source);
 $needsWrite = !is_file($runtimeFile) || @hash_file('sha256', $runtimeFile) !== $runtimeHash;
 if ($needsWrite) {
