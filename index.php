@@ -4,7 +4,7 @@ declare(strict_types=1);
 /**
  * LearnPiano bootstrap: GitHub loader installs matched runtime components.
  */
-const LEARNPIANO_LIBRARY_ENGINE_SHA256 = '2bdc05becd73839b1ccfdef2d31e9d9cc439c8a87d878df7e8ba5bde087a67e7';
+const LEARNPIANO_LIBRARY_ENGINE_SHA256 = '9c3ff78ad88b6cba4b7cd5cac748a9b982c5c6c19cb3e6f6b4828b42aa64072b';
 const LEARNPIANO_PAYLOAD_SHA256 = 'd55a8a4d2dd32b5cf384e18e9a9061df264ae5c497628d87cd5041bc799eab89';
 const LEARNPIANO_EXPRESSION_SHA256 = 'a1a77920d6b63b732bc94598404226d4d819570664283a6142b4d56ad0180f94';
 const LEARNPIANO_SONG_LIBRARY_SHA256 = '22aa63aa7eff289732455de73405fa7f1a3ced483cdd6ddc1f90de2055dafeed';

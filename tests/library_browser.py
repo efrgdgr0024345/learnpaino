@@ -37,14 +37,14 @@ with sync_playwright() as p:
             if 'action=status' not in r.request.url:paid.append(r.request.url)
             r.fulfill(content_type='application/json',body='{"ok":true,"configured":false,"authenticated":false}')
         else:r.abort()
-    page.route('**/*',route);page.goto('http://localhost:8873/index.php');page.wait_for_function('__libTest.state().notes>0')
+    page.route('**/*',route);page.goto('http://localhost:8873/index.php');page.wait_for_function('__libTest.state().notes>0 && !document.getElementById("lpSongSelect").disabled')
     initial=page.locator('#trainer').bounding_box();report=[]
     for s in manifest:
         ok=page.evaluate('(id)=>__libTest.load(id)',s['id']);assert ok,s['id']
         state=page.evaluate('__libTest.state()');assert set(state['hands'])=={'left','right'},state
         assert state['notes']>150 and state['level']==s['difficulty']['level'],state
         assert state['goal']==s['lesson'],(state['goal'],s['lesson'])
-        assert page.locator('#trainer').bounding_box()==initial,'calibration changed'
+        assert page.locator('#trainer').bounding_box()==initial,('calibration changed',s['id'],initial,page.locator('#trainer').bounding_box())
         page.select_option('#expressionMode','practice');plain=page.evaluate('__libTest.sample()')
         page.select_option('#expressionMode','performance');perf=page.evaluate('__libTest.sample()')
         assert plain['plain']==perf['plain'],'expression changed score notes'

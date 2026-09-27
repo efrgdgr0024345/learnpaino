@@ -158,6 +158,12 @@ async function libraryReadFile(f){
 }
 
 const libraryStyle=document.createElement('style');libraryStyle.textContent=`
+/* Toolbar metadata is non-wrapping: changing titles must not move calibration. */
+.topbar{box-sizing:border-box;flex:0 0 var(--lpbar,52px);height:var(--lpbar,52px);min-height:var(--lpbar,52px);max-height:var(--lpbar,52px);overflow-x:auto;overflow-y:hidden}
+.topbar>*{flex-shrink:0;white-space:nowrap}
+.topbar .badge{max-width:210px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.topbar #fileInfo{max-width:180px}
+@media(max-width:680px){.topbar #fileInfo{display:none}}
 #lpLibrary{box-sizing:border-box;width:min(940px,calc(100vw - 24px));max-height:calc(100dvh - 24px);background:#0d1823;color:#eaf5ff;border:1px solid #426177;border-radius:16px;padding:20px;overflow:auto;font:15px/1.5 system-ui}
 #lpLibrary::backdrop{background:#000b}#lpLibrary .libTop{display:flex;justify-content:space-between;gap:12px;align-items:center}#lpLibrary h2{margin:0;font-size:23px}#lpLibrary p{margin:8px 0;color:#bfd0df}
 #lpLibrary .libFilters{display:flex;gap:10px;flex-wrap:wrap;margin:16px 0}#lpLibrary input[type=search]{flex:1;min-width:170px;background:#071019;color:white;border:1px solid #426177;border-radius:8px;padding:10px}
