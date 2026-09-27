@@ -1,0 +1,13 @@
+name: Song imports and integrity
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  songs:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/song_import.py

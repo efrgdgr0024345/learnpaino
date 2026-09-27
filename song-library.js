@@ -1,7 +1,6 @@
-/* LearnPiano song library v1
- * Adds an 11-piece song menu (Moonlight + 10 additional public-domain works).
- * Every loaded score goes through the existing parseXML/apply pipeline, so the
- * Practice/exact-pulse and Performance/soulful modes remain available.
+/* LearnPiano song library v1.1
+ * Every song uses the existing text-based MusicXML importer and both playback
+ * modes. Loading a new song must not change the calibrated trainer geometry.
  */
 const LP_SONG_SOURCE_COMMIT='c2a1e72b83cc74514d796d9bfd6e50f5a1af9a05';
 const LP_SONG_RAW='https://raw.githubusercontent.com/SBurrell23/Sheets/'+LP_SONG_SOURCE_COMMIT+'/';
@@ -24,101 +23,126 @@ const lpSongWrap=document.createElement('label');
 lpSongWrap.id='lpSongWrap';
 lpSongWrap.style.cssText='display:flex;align-items:center;gap:5px;flex:0 0 auto;white-space:nowrap';
 const lpSongText=document.createElement('span');
-lpSongText.textContent='Song';
+lpSongText.id='lpSongText';lpSongText.textContent='Song';
 lpSongText.style.cssText='font-size:12px;color:#aecaDC';
 const lpSongSelect=document.createElement('select');
-lpSongSelect.id='lpSongSelect';
-lpSongSelect.title='Choose a piano piece';
+lpSongSelect.id='lpSongSelect';lpSongSelect.title='Choose a piano piece';
+lpSongSelect.setAttribute('aria-label','Choose a piano piece');
 lpSongSelect.style.cssText='max-width:min(360px,38vw);min-width:170px';
 for(const song of LP_SONGS){
-  const opt=document.createElement('option');
-  opt.value=song.id;
+  const opt=document.createElement('option');opt.value=song.id;
   opt.textContent=song.title+' — '+song.composer+(song.kind==='full score'?'':' ['+song.kind+']');
   lpSongSelect.append(opt);
 }
-lpSongSelect.value='moonlight';
-lpSongWrap.append(lpSongText,lpSongSelect);
-
+lpSongSelect.value='moonlight';lpSongWrap.append(lpSongText,lpSongSelect);
 const lpTop=document.querySelector('.topbar');
 const lpMode=document.querySelector('#expressionMode');
 if(lpMode){
   for(const opt of lpMode.options){
-    if(opt.value==='practice') opt.textContent='Exact notes · steady pulse';
-    else if(opt.value==='performance') opt.textContent='Soulful · performance interpretation';
+    if(opt.value==='practice')opt.textContent='Exact notes · steady pulse';
+    else if(opt.value==='performance')opt.textContent='Soulful · performance interpretation';
   }
-  lpMode.title='Exact mode follows the selected score; Soulful mode adds illustrative phrasing, dynamics and timing shape.';
+  lpMode.title='Exact mode follows the selected score; Soulful mode adds illustrative interpretation.';
 }
-if(lpMode?.parentElement) lpMode.parentElement.insertAdjacentElement('beforebegin',lpSongWrap);
-else if(lpTop) lpTop.append(lpSongWrap);
-
+// expressionMode is already a child of the toolbar, not a wrapper for it.
+if(lpTop&&lpMode?.parentElement===lpTop)lpTop.insertBefore(lpSongWrap,lpMode);
+else if(lpTop)lpTop.append(lpSongWrap);
 const lpSongInfo=document.createElement('span');
-lpSongInfo.id='lpSongInfo';
-lpSongInfo.className='badge';
-lpSongInfo.textContent='Full score';
-lpSongInfo.title='Score source type';
+lpSongInfo.id='lpSongInfo';lpSongInfo.className='badge';
+lpSongInfo.textContent='Full score';lpSongInfo.title='Score source type';
 lpSongWrap.insertAdjacentElement('afterend',lpSongInfo);
-
 const lpSongStyle=document.createElement('style');
 lpSongStyle.textContent=`
 #lpSongWrap select{background:#102130;color:#eef7ff;border:1px solid #38556d;border-radius:8px;padding:7px 8px}
 #lpSongWrap select:disabled{opacity:.55}
 #lpSongInfo{font-size:11px}
-@media(max-width:900px){
-  #lpSongWrap select{max-width:260px;min-width:150px;padding:6px}
-}
-@media(max-width:680px){
-  #lpSongText,#lpSongInfo{display:none}
-  #lpSongWrap select{max-width:48vw;min-width:140px}
-}`;
+@media(max-width:900px){#lpSongWrap select{max-width:260px;min-width:150px;padding:6px}}
+@media(max-width:680px){#lpSongText,#lpSongInfo{display:none}#lpSongWrap select{max-width:48vw;min-width:140px}}
+`;
 document.head.append(lpSongStyle);
 
 const lpSongCache=new Map();
+let lpSongRequest=0,lpSongController=null;
 function lpSongLabel(song){return song.title+' — '+song.composer}
-function lpSongKindText(song){if(song.kind==='full score')return'Full score';if(song.kind==='full arrangement')return'Full arrangement';return'Melody arrangement'}
-async function lpFetchSong(song){
-  if(lpSongCache.has(song.id)) return lpSongCache.get(song.id);
-  const response=await fetch(song.url,{cache:'force-cache'});
-  if(!response.ok) throw new Error('HTTP '+response.status);
-  const text=await response.text();
-  if(!/<score-(partwise|timewise)\b/i.test(text)) throw new Error('Downloaded file is not MusicXML');
-  lpSongCache.set(song.id,text);return text;
+function lpSongKindText(song){return song.kind==='full score'?'Full score':song.kind==='full arrangement'?'Full arrangement':'Melody arrangement'}
+function lpValidateSongText(text){
+  if(typeof text!=='string'||!text.trim())throw Error('The score download is empty.');
+  if(text.length>5000000)throw Error('The score exceeds the 5 MB import limit.');
+  const documentXML=new DOMParser().parseFromString(text,'application/xml');
+  const error=documentXML.querySelector('parsererror');
+  if(error)throw Error('Malformed XML: '+error.textContent.trim().replace(/\s+/g,' ').slice(0,180));
+  const root=documentXML.documentElement?.localName;
+  if(root==='score-timewise')throw Error('This importer requires partwise MusicXML, not timewise MusicXML.');
+  if(root!=='score-partwise')throw Error('The download is not a partwise MusicXML score.');
+}
+async function lpFetchSong(song,signal){
+  if(lpSongCache.has(song.id))return lpSongCache.get(song.id);
+  const response=await fetch(song.url,{cache:'no-cache',signal});
+  if(!response.ok)throw Error('Score download failed (HTTP '+response.status+').');
+  const text=await response.text();lpValidateSongText(text);
+  return text;
 }
 async function lpLoadSong(song){
-  const previous=LP_SONGS.find(s=>s.id===lpSongSelect.dataset.loaded)||LP_SONGS[0];
-  const previousMode=lpMode?.value||'practice';
-  lpSongSelect.disabled=true;lpSongInfo.textContent='Loading…';
+  const previousId=lpSongSelect.dataset.loaded||'moonlight';
+  const previousInfo={text:lpSongInfo.textContent,title:lpSongInfo.title};
+  const request=++lpSongRequest;
+  lpSongController?.abort();
+  const controller=new AbortController();lpSongController=controller;
+  let timedOut=false,stage='download';
+  const timer=setTimeout(()=>{timedOut=true;controller.abort()},20000);
+  lpSongSelect.disabled=true;lpSongSelect.setAttribute('aria-busy','true');
+  lpSongInfo.textContent='Loading…';
+  // Stop the current transport AND its sounding/scheduled voices, synchronously.
+  pause();setStatus('Loading '+lpSongLabel(song)+'…');
   try{
-    if(typeof playing!=='undefined'&&playing&&typeof togglePlay==='function') togglePlay();
-    if(typeof stopSources==='function') stopSources();
-    if(typeof setStatus==='function') setStatus('Loading '+lpSongLabel(song)+'…');
-    const xmlText=await lpFetchSong(song);
-    const doc=new DOMParser().parseFromString(xmlText,'application/xml');
-    if(doc.querySelector('parsererror')) throw new Error('MusicXML parse error');
-    const parsed=parseXML(doc);
-    apply(parsed,lpSongLabel(song));
-    if(lpMode){lpMode.value=previousMode;lpMode.dispatchEvent(new Event('change',{bubbles:true}))}
-    if(typeof bpm!=='undefined'&&bpm){
-      bpm.value=String(song.bpm);
-      bpm.dispatchEvent(new Event('input',{bubbles:true}));
-      bpm.dispatchEvent(new Event('change',{bubbles:true}));
+    const xmlText=await lpFetchSong(song,controller.signal);
+    if(request!==lpSongRequest)return false;
+    stage='parse';
+    // parseXML performs its own DOM parsing. Passing an XMLDocument here made
+    // valid files fail as "Invalid MusicXML" (it received [object XMLDocument]).
+    const parsed=parseXML(xmlText,lpSongLabel(song));
+    if(!parsed.notes?.length||!Number.isFinite(parsed.total)||parsed.total<=0)throw Error('No playable notes were imported.');
+    const suggested=Number(song.bpm);
+    if(Number.isFinite(suggested)&&suggested>0){
+      parsed.scoreBpm=parsed.bpm;parsed.bpm=suggested;
+      parsed.tempoSource='library practice suggestion';
     }
-    lpSongSelect.dataset.loaded=song.id;
+    const selectedMode=lpMode?.value||'practice';
+    stage='apply';
+    // apply() already updates the real tempo slider, timeline and listener.
+    // There is no global "bpm" control. Set the score tempo BEFORE applying it.
+    apply(parsed,lpSongLabel(song));
+    if(lpMode){lpMode.value=selectedMode;lpMode.dispatchEvent(new Event('change',{bubbles:true}))}
+    lpSongCache.set(song.id,xmlText);
+    lpSongSelect.value=song.id;lpSongSelect.dataset.loaded=song.id;
     lpSongInfo.textContent=lpSongKindText(song);
     lpSongInfo.title=song.kind==='melody arrangement'
-      ? 'This library source is a reduced public-domain teaching arrangement, not the complete original piano texture.'
-      : 'This source contains the complete score/arrangement represented by the MusicXML file.';
-    if(typeof setStatus==='function'){
-      const suffix=song.kind==='melody arrangement'
-        ? ' Teaching arrangement loaded; exact mode follows this arrangement exactly.'
-        : ' Ready in exact-pulse or soulful Performance mode.';
-      setStatus(lpSongLabel(song)+'.'+suffix);
-    }
+      ? 'Reduced teaching arrangement; exact mode follows this arrangement, not the complete original piano score.'
+      : 'The MusicXML score/arrangement supplied by the listed source.';
+    setStatus(lpSongLabel(song)+' — '+parsed.notes.length+' notes. '+lpSongKindText(song)+'. Both playback modes available; ♩ = '+parsed.bpm+' BPM (practice suggestion).');
+    d('info','song_loaded',{song:song.id,notes:parsed.notes.length,bpm:parsed.bpm,mode:selectedMode,sourceType:song.kind});
+    return true;
   }catch(err){
-    lpSongSelect.value=previous.id;
-    lpSongInfo.textContent=lpSongKindText(previous);
-    if(typeof setStatus==='function') setStatus('Could not load '+lpSongLabel(song)+': '+String(err),true);
-    if(typeof d==='function') d('error','song_load_failed',{song:song.id,error:String(err)});
-  }finally{lpSongSelect.disabled=false}
+    if(request!==lpSongRequest)return false;
+    lpSongCache.delete(song.id);
+    lpSongSelect.value=previousId;
+    lpSongInfo.textContent=previousInfo.text;lpSongInfo.title=previousInfo.title;
+    const message=timedOut?'The score download timed out after 20 seconds. Please try again.':String(err.message||err);
+    setStatus('Could not load '+lpSongLabel(song)+': '+message,true);
+    d('error','song_load_failed',{song:song.id,stage,error:message});
+    return false;
+  }finally{
+    clearTimeout(timer);
+    if(request===lpSongRequest){lpSongController=null;lpSongSelect.disabled=false;lpSongSelect.removeAttribute('aria-busy')}
+  }
 }
 lpSongSelect.addEventListener('change',()=>{const song=LP_SONGS.find(s=>s.id===lpSongSelect.value);if(song)lpLoadSong(song)});
 lpSongSelect.dataset.loaded='moonlight';
+// Wait for the existing automatic demo load before enabling manual selection.
+// Otherwise its late response could overwrite a just-selected menu song.
+const lpOriginalLoadDemo=loadDemo;
+loadDemo=async function(){
+  lpSongSelect.disabled=true;
+  try{return await lpOriginalLoadDemo()}
+  finally{if(!lpSongController)lpSongSelect.disabled=false}
+};
