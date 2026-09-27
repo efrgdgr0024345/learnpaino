@@ -1,0 +1,24 @@
+name: Two-hand library and local imports
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  library:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - run: python tools/check_integrity.py
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/library_browser.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: library-test-results
+          path: |
+            library-*-test.png
+            library-test-results.json
+          retention-days: 3
