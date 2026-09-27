@@ -222,7 +222,16 @@ C('End').onclick=()=>{pause();coachFinishAttempt();coachRange=null;coachStatus('
 const coachOldStartMic=startMic;
 startMic=async function(){coachStopVoice();coachStopRecording(true);return coachOldStartMic();};
 const coachOldToggle=togglePlay;
-togglePlay=async function(){coachStopVoice();coachStopRecording(true);return coachOldToggle();};playB.onclick=()=>{coachCancelRequest();return togglePlay();};
+togglePlay=async function(){
+  coachStopVoice();coachStopRecording(true);
+  // Play after a completed passage starts that passage again, rather than
+  // immediately stopping at its end boundary. A manual pause resumes in place.
+  if(!playing&&coachRange&&(beat>=coachRange.end-.025||beat<coachRange.start)){
+    seek(coachRange.start);
+    coachAttempt=coachRange.demo?null:{revision:coachRevision,labels:coachRange.labels,tempo:+tempo.value,mode:performanceMode,listening:micOn};
+  }
+  return coachOldToggle();
+};playB.onclick=()=>{coachCancelRequest();return togglePlay();};
 const coachOldRestart=restartB.onclick;
 restartB.onclick=()=>{coachRange=null;coachAttempt=null;coachOldRestart();};
 C('Apply').onclick=async()=>{
