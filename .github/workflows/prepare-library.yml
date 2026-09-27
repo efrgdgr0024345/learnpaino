@@ -1,0 +1,106 @@
+name: Prepare and test two-hand library branch
+on:
+  push:
+    branches: [feat/two-hand-library]
+    paths: [.staging/**, .github/workflows/prepare-library.yml]
+permissions:
+  contents: write
+jobs:
+  prepare:
+    if: github.ref == 'refs/heads/feat/two-hand-library'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+      - name: Materialise reviewed source patch (never on main)
+        shell: python
+        run: |
+          import pathlib,base64,gzip,json,hashlib
+          root=pathlib.Path('.')
+          encoded=''.join((root/f'.staging/library-{i}.b64').read_text().strip() for i in range(1,6))
+          raw=base64.b64decode(encoded,validate=True)
+          assert hashlib.sha256(raw).hexdigest()=='902066bb379eaee7bdc5eba108f3d4c6048c77af0f58d71e054e7046b4605587'
+          package=json.loads(gzip.decompress(raw))
+          allowed={'library-engine.js','scores/catalogue.json','scores/source-manifest.json','tools/build_library.py','tools/check_integrity.py','docs/LIBRARY_V2.md','tests/library_browser.py','.github/workflows/library.yml','index.php','song-library.js','tests/coach_browser.py','tests/song_import.py'}
+          assert set(package['files'])|set(package['patches'])==allowed
+          for name,text in package['files'].items():
+            p=root/name;p.parent.mkdir(parents=True,exist_ok=True);p.write_text(text,encoding='utf-8')
+          for name,patch in package['patches'].items():
+            p=root/name;before=p.read_bytes();assert hashlib.sha256(before).hexdigest()==patch['before_sha'],name
+            lines=before.decode().splitlines(keepends=True)
+            for e in reversed(patch['edits']):lines[e['start']:e['end']]=e['lines']
+            result=''.join(lines).encode();assert hashlib.sha256(result).hexdigest()==patch['after_sha'],name
+            p.write_bytes(result)
+          p=root/'index.payload.b64.gz';before=gzip.decompress(base64.b64decode(p.read_bytes()));patch=package['payload_replace']
+          assert hashlib.sha256(before).hexdigest()==patch['expected_input_sha256']
+          text=before.decode();assert text.count(patch['before'])==1;text=text.replace(patch['before'],patch['after'])
+          assert hashlib.sha256(text.encode()).hexdigest()==patch['expected_output_sha256']
+          p.write_bytes(base64.b64encode(gzip.compress(text.encode(),mtime=0))+b'\n')
+          (root/'README.md').write_text('''# LearnPiano — score-first piano lessons
+
+          A calibrated, resizable falling-note piano trainer with Exact and Soulful playback and an optional private AI coach.
+
+          ## Library v2
+
+          The library opens on five bundled two-hand source scores: Moonlight Sonata I, Petzold Minuet in G, Satie Gymnopedie No. 1, full-length Fur Elise and Chopin Nocturne Op. 9 No. 2. Seven older melody/arrangement demos remain in a separate legacy group. This is not yet a 100-song collection.
+
+          Scores are delivered with the project, not fetched from unrelated hosts during normal selection. Original extracted MusicXML bytes, pinned provenance and SHA-256 fingerprints are recorded in scores/catalogue.json and scores/source-manifest.json. Structural checks confirm both notated hand parts; they do not certify edition accuracy or redistribution rights. Difficulty ratings (1–10) and performance profiles are provisional learning suggestions, not exam grades, pianist reviews or recordings.
+
+          **Library** opens a closable search/filter panel. **Import sheet music** accepts XML/MusicXML and compressed MXL locally, shows an import preview and warnings, then requires confirmation. PDF/photo recognition and a persistent publishing admin are not implemented. Existing keyboard alignment is not changed by importing or selecting songs.
+
+          Both Exact and Soulful modes use the same score notes. Source dynamics, illustrative voicing/phrase shaping and limited pedal handling remain separate from musical correctness. Ordinary repeat/ending handling has been added; advanced navigation and ornaments still need review. See [the full library guide](docs/LIBRARY_V2.md).
+
+          ## Optional coach
+
+          The server-side OpenAI coach supports text questions, explicitly recorded questions, spoken replies, confirmed passage actions and approximate attempt feedback. It is disabled until configured; no paid calls occur just because the piano page opens. No API key belongs in GitHub or browser storage. See [private setup, limits and privacy](docs/AI_COACH.md).
+
+          The microphone feedback remains approximate: green correct, red wrong, blue missed. It cannot provide a reliable formal grade for chords, pedal, velocity or musical expression. Listening to demo speakers can generate false matches. Hand assignments follow source staves and need review for cross-staff writing.
+
+          ## Deploy
+
+          Open the existing loader.php in your browser and select **Load latest from GitHub**, then reopen index.php. Do not delete old files, change hashes manually or upload an API key. Private coach configuration remains outside the project. Protect or remove the web updater when it is not needed.
+
+          ## Test and reproduce
+
+          `python tools/check_integrity.py` checks runtime hashes. `python tools/build_library.py` recreates the bundled scores from pinned, hash-checked sources (build step only). Browser suites cover song import, hand mapping, mode switching, source integrity, local MXL safety, UI/calibration and coach isolation. Tests use simulated coach responses; they do not certify musical accuracy or exercise a real API key.
+          ''',encoding='utf-8')
+      - run: python tools/build_library.py
+      - run: python tools/check_integrity.py
+      - name: Commit readable source and bundled notation to review branch only
+        shell: bash
+        run: |
+          git fetch origin feat/two-hand-library
+          test "$(git rev-parse FETCH_HEAD)" = "$(git rev-parse HEAD)"
+          git config user.name 'LearnPiano build'
+          git config user.email 'learnpiano-build@users.noreply.github.com'
+          git rm .staging/library-*.b64 .github/workflows/prepare-library.yml .github/workflows/source-review.yml
+          git add index.php index.payload.b64.gz song-library.js library-engine.js README.md scores/ docs/LIBRARY_V2.md tools/build_library.py tools/check_integrity.py tests/library_browser.py tests/coach_browser.py tests/song_import.py .github/workflows/library.yml
+          git commit -m 'Add five bundled two-hand scores, reviewed import preview and provisional lesson profiles'
+          git push origin HEAD:refs/heads/feat/two-hand-library
+          git rev-parse HEAD > release-commit.txt
+      - run: php tests/coach_api.php
+      - run: python tests/coach_http.py
+      - run: python -m pip install playwright==1.57.0
+      - run: python -m playwright install --with-deps chromium
+      - run: python tests/library_browser.py
+      - run: python tests/coach_browser.py
+      - run: python tests/song_import.py
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: two-hand-library-review
+          path: |
+            release-commit.txt
+            library-*-test.png
+            library-test-results.json
+            song-test-results.json
+            coach-mobile-test.png
+            *.php
+            *.js
+            *.gz
+            scores/
+            tests/
+            tools/
+            docs/
+            README.md
+          retention-days: 3
